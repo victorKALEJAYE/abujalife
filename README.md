@@ -12,28 +12,32 @@ npx serve .
 python -m http.server 8080
 ```
 
-## What is in Phase 1
+## Design principle: simulate the city, don't render the city
 
-- **The Abuja map.** It has 16 districts (Kubwa, Gwarinpa, Jabi, Bwari, Garki, Wuse, Maitama, Nyanya, Lugbe, CBD, Asokoro, Karu, Gwagwalada, Giri, Kuje, Apo), now at human scale.
-- **Landmarks.** Aso Rock, National Assembly, Eagle Square, National Mosque, National Christian Centre, National Stadium, the airport, Jabi Lake and Millennium Park.
-- **A third-person character you control:**
-  - Move with WASD or the arrow keys, or the on-screen joystick on phones.
-  - Hold Shift to run.
-  - Bumping into buildings stops you, and the character follows the ground height.
-  - The camera follows you, and there is a zoomed-out map view.
-- **A jointed 3D human with procedural animations:** idle, walk, run, sit, talk, interact, work, eat and wave.
-- **Character creator:**
-  - Male or female, slim, regular or broad body.
-  - 6 skin tones and 8 hairstyles.
-  - 7 outfits: T-shirt, streetwear, agbada, kaftan, Ankara, suit, uniform.
-- **Interaction system.** Walk up to kiosks (jobs, food, estate agent, business office, bank, ATM, taxi rank, your home, motor park, benches), NPCs and landmarks, then press E.
-- **Pedestrians.** They have names, jobs, homes and daily routines. You can talk to them and build friendships.
-- **Real-time clock.** One real second is one game minute. There is a day/night cycle, opening hours and passive energy drain.
-- **Economy.** Same as before: jobs, food, property, businesses, bank interest, 10% income tax, furniture and comfort, taxis.
-- **HUD and phone.**
-  - The phone has these apps: Map & Taxi, Wallet, Rich List, Contacts, Activity, Goals and Settings.
-  - Placeholder apps for later phases: Bank app, Jobs, Social, Food, Invest and Messages.
-- **Saving.** Progress saves in the browser (`localStorage`). An optional online edition saves to the player's account.
+Abuja is kept as data and only the area around the player is drawn.
+
+- **Locations.** About 90 meaningful places, each with a category, opening hours and services, in `js/sim/sim.js`.
+- **Businesses.** Staff, customers and revenue are simulated every game hour. Nobody inside them is rendered.
+- **Residents.** 240 people with homes, jobs and daily schedules. A pool of about 20 reusable 3D actors is handed to whoever is near the player right now.
+- **Traffic.** Each district has a congestion level and an average speed. A small pool of cars is spawned only on roads near the player.
+- **Level of detail.** Full districts are built near the player; far away they become cheap stand-ins.
+
+## Gameplay systems
+
+- **Travel.** Walk, bus, taxi or ride-hailing. Each trip has a distance, an ETA from simulated traffic, a cost and an arrival time. You can watch the ride or skip it with a travel transition, and the clock always advances.
+- **Phone.**
+  - Maps: pan, zoom, search, categories, directions, ride requests.
+  - Rides, Bank (balance, history, transfers, loans, bills) and Invest (fictional exchange with dividends).
+  - ShopNaija (next-day delivery), Jobs (careers and day jobs), Messages, Home (housing) and Me (profile).
+  - Rich List, Contacts, Activity, Goals and Settings.
+- **Housing.**
+  - You start in a rented Kubwa self-con with the first week paid. Rent is taken weekly from your bank account, and three days behind means eviction.
+  - Rent or buy at estate agents.
+  - Five reusable interior templates (Apartment A, B and C; House A and B).
+  - Your home is your base: sleep, wardrobe, kitchen, furniture and paint.
+- **Careers.** 8 salaried jobs with schedules. Go to the workplace during your shift; pay goes into your bank account, and every 10 shifts earns a promotion. The day jobs from Phase 1 are still there for cash.
+- **Player profile.** Age, cash, bank balance, credit score, health, energy, happiness, home, job, inventory, wardrobe, possessions, investments and relationships.
+- **From Phase 1.** Third-person 3D character, landmarks, NPC dialogue, day/night clock, businesses and property.
 
 ## Project structure
 
@@ -41,7 +45,9 @@ python -m http.server 8080
 index.html            page shell and HUD markup
 css/game.css          game UI styles
 js/core.js            shared helpers + event bus (AL namespace)
-js/data.js            all game content: districts, jobs, food, homes, businesses, looks, venues, landmarks, NPC names
+js/data.js            core content: districts, jobs, food, homes, businesses, looks, venues, landmarks, NPC names
+js/data-life.js       life-sim content: interior templates, rentals, careers, shop catalogue, stocks, place names
+js/sim/sim.js         city simulation: locations, businesses, traffic, population, stock market
 js/state.js           player state, save/load, derived values (net worth, prices, clock)
 js/world/kit.js       low-poly building kit (shared geometries/materials)
 js/world/city.js      city builder, venues, landmarks, traffic, collisions, ground height
@@ -50,8 +56,10 @@ js/entities/player.js     player controller, camera, taxi trips
 js/entities/npc.js        pedestrians with routines, other online players
 js/systems/time.js        real-time clock, day/night events
 js/systems/interaction.js reusable interaction prompts
-js/systems/economy.js     jobs, food, property, business, bank, sleep, taxi
-js/ui/*.js                HUD, venue panels + dialogue, phone, creator, home interior
+js/systems/economy.js     day jobs, food, property, business, bank, sleep
+js/systems/life.js        rent, careers, bank transfers + loans, shopping, inventory, investments, messages, daily ticks
+js/systems/travel.js      travel quotes, journeys, navigation
+js/ui/*.js                HUD, venue panels + dialogue, phone + apps, maps, journey card, creator, home interior
 js/online.js              optional cloud save + shared leaderboard
 js/main.js                boot + main loop
 ```

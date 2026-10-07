@@ -10,7 +10,13 @@
     cash: 5000, savings: 0, taxPaid: 0, energy: 100, t: 6, xp: 0, at: 'garki', homes: [], paid: {}, jobXp: {},
     log: ['You arrived at Area 1 motor park.'],
     // new in the open-world build
-    pos: null, rel: {}, visited: [], v: 3,
+    pos: null, rel: {}, visited: [], v: 4,
+    // life simulation (v4)
+    age: 25, health: 100, happy: 70, credit: 550,
+    home: null,            // { kind: 'rent'|'own', id, paidUntil, arrears }
+    career: null,          // { id, lvl, shifts, lastShift, hired }
+    inv: {}, items: [], wardrobe: ['tshirt'], deliveries: [],
+    msgs: [], tx: [], loan: null, portfolio: {}, market: null, nav: null, lastDay: 1,
   });
 
   function cleanBiz(b) {
@@ -47,6 +53,15 @@
     if (!s.pos || typeof s.pos !== 'object' || !isFinite(s.pos.x) || !isFinite(s.pos.z)) s.pos = null;
     if (typeof s.rel !== 'object' || !s.rel) s.rel = {};
     if (!Array.isArray(s.visited)) s.visited = [];
+    ['age', 'health', 'happy', 'credit', 'lastDay'].forEach((k) => { s[k] = Number(s[k]) || fresh()[k]; });
+    if (!(o && o.lastDay)) s.lastDay = Math.floor((s.t - 6) / 24) + 1;
+    s.health = AL.clamp(s.health, 0, 100); s.happy = AL.clamp(s.happy, 0, 100); s.credit = AL.clamp(s.credit, 300, 850);
+    if (s.home && (typeof s.home !== 'object' || !(s.home.kind === 'rent' ? (AL.RENTALS || []).some((r) => r.id === s.home.id) : HOMES.some((h) => h.id === s.home.id && s.homes.includes(h.id))))) s.home = null;
+    if (s.career && !(AL.CAREERS || []).some((c) => c.id === s.career.id)) s.career = null;
+    ['inv', 'portfolio'].forEach((k) => { if (typeof s[k] !== 'object' || !s[k] || Array.isArray(s[k])) s[k] = {}; });
+    ['items', 'wardrobe', 'deliveries', 'msgs', 'tx'].forEach((k) => { if (!Array.isArray(s[k])) s[k] = []; });
+    if (!s.wardrobe.includes(s.look.outfit)) s.wardrobe.push(s.look.outfit);
+    if (s.loan && !(Number(s.loan.bal) > 0)) s.loan = null;
     return s;
   }
   function load() { try { const v = localStorage.getItem(SAVE_KEY); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
@@ -92,8 +107,22 @@
   AL.homeValue = (s = S()) => (s.homes || []).reduce((a, id) => (HOMES.some((h) => h.id === id) ? a + AL.paidFor(id, s) : a), 0);
   AL.bizValue = (s) => Object.values(cleanBiz(s.biz)).reduce((a, v) => a + v.invested, 0);
   AL.worth = (s = S()) => (Number(s.cash) || 0) + (Number(s.savings) || 0) + AL.homeValue(s) + AL.bizValue(s);
-  AL.comfort = (s = S()) => ((s.homes && s.homes.length) ? (s.furn || []).reduce((a, id) => { const f = FURN.find((x) => x.id === id); return a + (f ? f.comfort : 0); }, 0) : 0);
   AL.bestHome = (s = S()) => { const own = HOMES.filter((h) => (s.homes || []).includes(h.id)); return own.length ? own[own.length - 1] : null; };
+  /* where the player lives now: a rented or owned home, described with its interior template */
+  AL.residence = (s = S()) => {
+    const h = s.home; if (!h) return null;
+    if (h.kind === 'rent') {
+      const r = (AL.RENTALS || []).find((x) => x.id === h.id); if (!r) return null;
+      return { kind: 'rent', id: r.id, name: r.name, at: r.at, tpl: r.tpl, T: AL.TEMPLATES[r.tpl], rent: r.rent, paidUntil: h.paidUntil, arrears: h.arrears || 0 };
+    }
+    const o = HOMES.find((x) => x.id === h.id); if (!o) return null;
+    const tpl = AL.HOME_TEMPLATE[o.id] || 'A';
+    return { kind: 'own', id: o.id, name: o.name, at: o.at, tpl, T: AL.TEMPLATES[tpl], rent: 0 };
+  };
+  AL.comfort = (s = S()) => {
+    const r = AL.residence(s); if (!r) return 0;
+    return r.T.comfort + (s.furn || []).reduce((a, id) => { const f = FURN.find((x) => x.id === id); return a + (f ? f.comfort : 0); }, 0);
+  };
   AL.payFor = (j) => { const n = S().jobXp[j.id] || 0; return Math.round(j.pay * (1 + Math.min(n, 20) * 0.03) * (1 + AL.comfort() / 200)); };
 
   /* ---- multiplayer-aware stock (filled by online.js) ---- */

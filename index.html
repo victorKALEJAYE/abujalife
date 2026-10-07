@@ -27,6 +27,7 @@
       </div>
       <div class="bars glass">
         <div class="barrow">Energy<div class="track" id="eTrack"><i id="eFill"></i></div><b id="hEnergy">100</b></div>
+        <div class="barrow">Mood<div class="track mood" id="mTrack"><i id="mFill"></i></div><b id="hMood">70</b></div>
         <div class="barrow">Hustle<div class="track xp"><i id="xFill"></i></div><b id="hXp">0</b></div>
       </div>
     </div>
@@ -37,6 +38,11 @@
     </div>
 
     <div class="notices" id="notices" aria-live="polite"></div>
+    <div class="navchip glass" id="navChip" hidden>
+      <svg id="navArrow" viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M12 2l7 18-7-4-7 4z" fill="#2fbf71" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+      <div><b id="navName">Destination</b><span id="navDist"></span></div>
+      <button class="x" type="button" id="navStop" aria-label="Stop directions"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
     <div class="district-banner" id="banner"><b id="bannerName">Garki</b><span id="bannerTag"></span></div>
 
     <div class="prompt glass" id="prompt" hidden role="button" tabindex="0">
@@ -46,7 +52,7 @@
     <div class="activity glass" id="activity" hidden><span id="activityLabel">Working…</span><div class="track"><i id="activityFill"></i></div></div>
     <div class="tripbar glass" id="tripBar" hidden><span id="tripLabel">On the way…</span><button class="btn" type="button" id="skipTrip">Skip ride</button></div>
 
-    <div class="help glass desk-only"><kbd>W A S D</kbd> move · <kbd>Shift</kbd> run · <kbd>E</kbd> interact · <kbd>M</kbd> map · <kbd>P</kbd> phone · drag to look</div>
+    <div class="help glass desk-only"><kbd>W A S D</kbd> move · <kbd>Shift</kbd> run · <kbd>E</kbd> interact · <kbd>M</kbd> overview · <kbd>P</kbd> phone · drag to look</div>
     <div class="joystick touch-only" id="joystick"><div class="knob" id="knob"></div></div>
 
     <div class="hud-br">
@@ -73,6 +79,14 @@
     <div class="row" id="dlgOpts"></div>
   </div>
 
+  <div class="journey glass" id="journey" hidden role="dialog" aria-live="polite">
+    <b id="jTitle">Trip</b>
+    <span id="jStep"></span>
+    <small id="jInfo"></small>
+    <div class="track" id="jBar" hidden><i id="jFill"></i></div>
+    <div class="row" id="jBtns"></div>
+  </div>
+
   <div class="phone" id="phone" hidden>
     <div class="ph-status"><span id="phTime">06:00</span><span>ABJ 4G</span></div>
     <div class="ph-body" id="phBody"></div>
@@ -83,12 +97,14 @@
     <form class="card creator" id="startForm">
       <div class="brandmark">Abuja <span>Life</span></div>
       <h2 id="ccTitle">Create your character</h2>
-      <p id="ccIntro">You arrive at Area 1 motor park in Garki with ₦5,000 and a dream. Walk the city, find work, eat, sleep, buy property and climb from a Kubwa self-con to an Asokoro villa.</p>
+      <p id="ccIntro">You arrive in Abuja with ₦5,000, a phone and a self-con in Kubwa that your cousin paid one week of rent on. Find work, pay your rent, build your bank balance and climb from Kubwa to an Asokoro villa.</p>
       <div class="cc">
         <div class="ccprev"><canvas id="preview" width="400" height="500" aria-label="Preview of your character"></canvas><span class="formnote">Drag to turn</span></div>
         <div class="ccopts">
           <label for="pName" class="optl">Player name</label>
           <input id="pName" maxlength="16" placeholder="e.g. Amaka" autocomplete="off" required>
+          <label for="pAge" class="optl">Age</label>
+          <input id="pAge" type="number" min="18" max="65" value="25" inputmode="numeric">
           <span class="optl">Body</span><div class="chips" id="optFrame"></div><div class="chips" id="optBody"></div>
           <span class="optl">Skin tone</span><div class="swatches" id="optSkin"></div>
           <span class="optl">Hair</span><div class="chips" id="optHair"></div>
@@ -121,6 +137,8 @@
         <div class="homeview"><canvas id="homeCanvas" aria-label="Inside your home"></canvas><span class="formnote">Drag to look around</span></div>
         <div class="homeside">
           <div class="statgrid" id="homeStats"></div>
+          <div class="group"><h3>Wardrobe · change clothes</h3><div class="group" id="wardrobe"></div></div>
+          <div class="group"><h3>Kitchen</h3><div class="group" id="kitchen"></div></div>
           <div class="group"><h3>Wall paint · ₦15,000</h3><div class="swatches" id="paintRow"></div></div>
           <div class="group"><h3>Furniture shop</h3><div id="furnList" class="group"></div></div>
         </div>
@@ -135,18 +153,25 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="js/core.js"></script>
 <script src="js/data.js"></script>
+<script src="js/data-life.js"></script>
 <script src="js/state.js"></script>
 <script src="js/world/kit.js"></script>
 <script src="js/world/city.js"></script>
+<script src="js/sim/sim.js"></script>
 <script src="js/entities/character.js"></script>
 <script src="js/entities/npc.js"></script>
 <script src="js/entities/player.js"></script>
 <script src="js/systems/time.js"></script>
 <script src="js/systems/interaction.js"></script>
 <script src="js/systems/economy.js"></script>
+<script src="js/systems/life.js"></script>
+<script src="js/systems/travel.js"></script>
 <script src="js/ui/hud.js"></script>
 <script src="js/ui/panels.js"></script>
 <script src="js/ui/phone.js"></script>
+<script src="js/ui/map.js"></script>
+<script src="js/ui/apps.js"></script>
+<script src="js/ui/journey.js"></script>
 <script src="js/ui/creator.js"></script>
 <script src="js/ui/home.js"></script>
 <script src="js/online.js"></script>

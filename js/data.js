@@ -131,10 +131,16 @@
     home: { verb: 'Enter your home', sign: 'HOME', color: '#d1342f', hours: null },
     park: { verb: 'Sleep at the motor park', sign: 'PARK', color: '#6f7f8f', hours: null },
     bench: { verb: 'Sit down', sign: '', color: '#8a6a3e', hours: null },
+    shop: { verb: 'Go shopping', sign: 'SHOP', color: '#d1342f', hours: [9, 21] },
+    invest: { verb: 'Enter investment house', sign: 'INVEST', color: '#1d6fa5', hours: [9, 17] },
+    clinic: { verb: 'Enter hospital', sign: 'HOSPITAL', color: '#c0392b', hours: null },
+    work: { verb: 'Enter office', sign: 'OFFICE', color: '#3d4f63', hours: [7, 20] },
+    worship: { verb: 'Visit', sign: 'FAITH', color: '#6aa0d8', hours: [5, 21] },
   };
   const VENUE_SPOTS = {
     taxi: [2.6, 8.5], jobs: [-3.2, -3.0], food: [3.2, -3.0], estate: [-3.2, 3.0], biz: [3.2, 3.0],
     bank: [0, -3.6], atm: [1.4, -3.6], home: [0, -6.4], park: [-1.6, 6.2], bench: [-2.2, 0.3],
+    shop: [-3.4, -6.3], invest: [3.4, -6.3], clinic: [3.6, 6.2], work: [2.4, 0.3],
   };
   function venuesFor(k) {
     const list = [{ type: 'taxi' }];
@@ -145,6 +151,12 @@
     if (k === 'cbd') list.push({ type: 'bank' });
     if (k === 'cbd' || k === 'wuse' || k === 'jabi' || k === 'garki') list.push({ type: 'atm' });
     if (k === 'garki') list.push({ type: 'park' });
+    if (k === 'jabi' || k === 'wuse' || k === 'gwarinpa') list.push({ type: 'shop' });
+    if (k === 'cbd') list.push({ type: 'invest' });
+    if (k === 'garki') list.push({ type: 'clinic' });
+    if (k === 'cbd' || k === 'jabi' || k === 'maitama') list.push({ type: 'work' });
+    if (!list.some((v) => v.type === 'estate') && (AL.RENTALS || []).some((r) => r.at === k)) list.push({ type: 'estate' });
+    list.push({ type: 'home' });
     list.push({ type: 'bench' });
     return list.map((v) => ({ ...v, x: VENUE_SPOTS[v.type][0], z: VENUE_SPOTS[v.type][1] }));
   }

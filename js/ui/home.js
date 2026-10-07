@@ -6,12 +6,24 @@
   const K = AL.Kit;
   const H = { v: null };
 
+  let wearColor = null;
   function render() {
-    const h = AL.bestHome();
-    $('homeTitle').textContent = h ? 'My ' + h.name.toLowerCase() + ' in ' + AL.D[h.at].name : 'My home';
+    const r = AL.residence(), S = AL.S;
+    $('homeTitle').textContent = r ? 'My ' + r.name.toLowerCase() + ' · ' + AL.D[r.at].name : 'My home';
     const c = AL.comfort();
     const st = $('homeStats'); st.innerHTML = '';
-    st.appendChild(AL.UI.stats([['Comfort', c + ' pts'], ['Pay bonus', '+' + (c / 2).toFixed(1) + '%'], ['Energy', Math.round(AL.S.energy) + ' / 100'], ['Time', AL.clock()]]));
+    st.appendChild(AL.UI.stats([['Home', r ? r.T.label : '—'], ['Quality', r ? '★'.repeat(r.T.stars) + '☆'.repeat(5 - r.T.stars) : '—'], ['Security', r ? r.T.security : '—'], ['Comfort', c + ' pts · +' + (c / 2).toFixed(1) + '% pay'], ['Energy', Math.round(S.energy) + ' / 100'], ['Time', AL.clock()]]));
+    // wardrobe
+    const wd = $('wardrobe'); wd.innerHTML = '';
+    const chips = document.createElement('div'); chips.className = 'chips'; wd.appendChild(chips);
+    S.wardrobe.forEach((o) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = (AL.OUTFITS.find((x) => x[0] === o) || [0, o])[1]; b.setAttribute('aria-pressed', String(S.look.outfit === o)); b.onclick = () => { AL.Life.wear(o, wearColor || S.look.color); build(); }; chips.appendChild(b); });
+    const sw = document.createElement('div'); sw.className = 'swatches'; wd.appendChild(sw);
+    AL.OUTFIT_COLORS.forEach((col) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'sw'; b.style.background = col; b.setAttribute('aria-label', 'Clothes colour ' + col); b.setAttribute('aria-pressed', String(S.look.color === col)); b.onclick = () => { wearColor = col; AL.Life.wear(S.look.outfit, col); build(); }; sw.appendChild(b); });
+    // kitchen
+    const kt = $('kitchen'); kt.innerHTML = '';
+    const food = Object.entries(S.inv);
+    if (!food.length) { const p = document.createElement('p'); p.className = 'note'; p.textContent = 'Your fridge is empty. Buy groceries at Wuse Market, Grand Square Supermarket or on ShopNaija.'; kt.appendChild(p); }
+    food.forEach(([id, n]) => { const it = AL.SHOP_ITEMS.find((x) => x.id === id); if (it) kt.appendChild(AL.UI.mk('Cook ' + it.name.toLowerCase(), '+' + it.food + ' energy · ' + n + ' meal' + (n > 1 ? 's' : '') + ' left', 'EAT', 'pay', () => AL.Life.eatHome(id), S.energy >= 100)); });
     const pr = $('paintRow'); pr.innerHTML = '';
     AL.WALLS.forEach((w) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'sw'; b.style.background = w; b.setAttribute('aria-label', 'Paint walls ' + w); b.setAttribute('aria-pressed', String(w === AL.S.wall)); b.onclick = () => AL.Econ.paint(w); pr.appendChild(b); });
     const fl = $('furnList'); fl.innerHTML = '';
@@ -21,7 +33,7 @@
     });
   }
   H.open = () => {
-    if (!AL.bestHome()) return AL.toast('You do not own a home yet. Visit an estate agent.');
+    if (!AL.residence()) return AL.toast('You have no home. Rent one at an estate agent.');
     $('homeOv').hidden = false; render();
     if (!T) return;
     try {
@@ -46,11 +58,15 @@
     if (!H.v) return;
     if (H.v.room) H.v.sc.remove(H.v.room);
     const g = new T.Group(); H.v.room = g; H.v.sc.add(g);
-    const h = AL.bestHome(); if (!h) return;
+    const r = AL.residence(); if (!r) return;
     const { box, mesh, CYL, mat } = K;
-    const [Wd, Dp] = AL.ROOM_SIZE[h.id] || [10, 8], Hh = 5.2, wall = AL.S.wall, has = (id) => AL.S.furn.includes(id);
+    const [Wd, Dp] = r.T.size, Hh = 5.2, wall = AL.S.wall, has = (id) => AL.S.furn.includes(id);
     H.v.size = [Wd, Dp];
-    box(g, Wd, 0.3, Dp, '#cdb995', 0, -0.3, 0);
+    box(g, Wd, 0.3, Dp, r.T.floor, 0, -0.3, 0);
+    // template extras: better homes come with more built in
+    if (r.T.stars >= 3) { box(g, 1.2, 1.8, 1.2, '#2f7d3a', Wd / 2 - 1.2, 0, -Dp / 2 + 1.2); box(g, 3.6, 0.04, 2.6, '#c9b48f', -Wd * 0.05, 0.01, Dp * 0.18); }
+    if (r.T.stars >= 4) { box(g, 4.4, 2.6, 0.05, '#9fd3f0', -Wd * 0.25, 1.4, -Dp / 2 + 0.17); box(g, 1.4, 0.5, 1.4, '#e0a526', 0, Hh - 0.7, 0); }
+    if (r.T.stars >= 5) { box(g, Wd * 0.9, 0.3, 0.6, '#f1ece2', 0, Hh - 0.3, -Dp / 2 + 0.4); box(g, 2, 0.9, 1, '#22262b', Wd / 2 - 2, 0, 0); }
     for (let x = -Wd / 2 + 1; x < Wd / 2; x += 2) box(g, 0.04, 0.31, Dp, '#b9a37c', x, -0.3, 0);
     box(g, Wd, Hh, 0.3, wall, 0, 0, -Dp / 2); box(g, 0.3, Hh, Dp, wall, -Wd / 2, 0, 0);
     box(g, 2.6, 1.8, 0.05, '#9fd3f0', Wd * 0.15, 2.2, -Dp / 2 + 0.17); box(g, 2.8, 0.15, 0.1, '#ffffff', Wd * 0.15, 2.1, -Dp / 2 + 0.2);
@@ -83,7 +99,7 @@
   AL.on('change', () => { if (!$('homeOv').hidden) render(); });
   H.bind = () => {
     $('homeClose').onclick = H.close;
-    $('homeSleep').onclick = () => { H.close(); AL.Econ.sleep(); };
+    $('homeSleep').onclick = () => { H.close(); AL.Econ.sleep(); AL.Life.mood(2 + (AL.residence() ? AL.residence().T.stars : 0)); };
   };
   AL.Home = H;
 })(window.AL);

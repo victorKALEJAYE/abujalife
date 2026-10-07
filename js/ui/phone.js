@@ -19,12 +19,14 @@
   Phone.home = () => {
     Phone.current = null;
     const body = $('phBody'); body.innerHTML = '';
-    const greet = el('div', 'note', 'Day ' + AL.day() + ' · ' + AL.D[AL.Player.district() || AL.S.at].name);
+    const greet = el('div', 'ph-greet'); greet.innerHTML = '<b></b><span></span>';
+    greet.querySelector('b').textContent = AL.clock(); greet.querySelector('span').textContent = AL.weekdayName() + ', day ' + AL.day() + ' · ' + AL.D[AL.Player.district() || AL.S.at].name;
     body.appendChild(greet);
     const grid = el('div', 'ph-home');
-    Phone.apps.forEach((a) => {
+    Phone.apps.slice().sort((x, y) => (x.order || 99) - (y.order || 99)).forEach((a) => {
       const b = el('button', 'app' + (a.soon ? ' soon' : '')); b.type = 'button';
       const i = el('i'); i.style.background = a.color; i.innerHTML = a.icon; b.appendChild(i); b.appendChild(el('span', null, a.name));
+      const n = a.badge ? a.badge() : 0; if (n) { const bd = el('em', 'badge-n', String(n)); i.appendChild(bd); }
       b.onclick = () => (a.soon ? AL.toast(a.name + ' arrives in a future update.') : Phone.open(a.id));
       grid.appendChild(b);
     });
@@ -40,71 +42,17 @@
     const ph = $('phone');
     if (!ph.hidden && !appId) { ph.hidden = true; return; }
     if (appId) Phone.open(appId); else Phone.home();
-    ph.hidden = false; $('phoneDot').hidden = true;
+    ph.hidden = false;
   };
   AL.on('toggle-phone', () => Phone.toggle());
   AL.on('change', () => { if (!$('phone').hidden && Phone.current && Phone.current.live) Phone.open(Phone.current.id); });
-  AL.on('log', () => { if ($('phone').hidden) $('phoneDot').hidden = false; });
+  const dot = () => { $('phoneDot').hidden = !AL.unread(); };
+  AL.on('msg', () => { dot(); if (!$('phone').hidden && !Phone.current) Phone.home(); });
+  AL.on('msgs-read', dot); AL.on('change', dot);
 
-  /* ---------- Map & taxi ---------- */
-  let mapSel = null;
-  function drawMap(cv) {
-    const ctx = cv.getContext('2d'), S = cv.width, sc = S / 360; // map units -160..160 → canvas (+ margin)
-    const X = (x) => (x + 180) * sc, Z = (z) => (z + 180) * sc;
-    ctx.fillStyle = '#1a2620'; ctx.fillRect(0, 0, S, S);
-    ctx.strokeStyle = '#4b5058'; ctx.lineWidth = 8 * sc;
-    AL.City.ROADS.forEach((v) => { ctx.beginPath(); ctx.moveTo(X(v), Z(-100)); ctx.lineTo(X(v), Z(100)); ctx.stroke(); ctx.beginPath(); ctx.moveTo(X(-100), Z(v)); ctx.lineTo(X(100), Z(v)); ctx.stroke(); });
-    AL.DKEYS.flat().forEach((k) => {
-      const d = AL.D[k];
-      ctx.fillStyle = k === mapSel ? '#2fbf71' : d.base; ctx.fillRect(X(d.x - 20), Z(d.z - 20), 40 * sc, 40 * sc);
-      ctx.fillStyle = k === mapSel ? '#04140b' : '#13211a'; let fs = Math.round(9 * sc); ctx.font = '700 ' + fs + 'px Figtree, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      while (fs > 8 && ctx.measureText(d.name).width > 36 * sc) { fs -= 1; ctx.font = '700 ' + fs + 'px Figtree, sans-serif'; }
-      ctx.fillText(d.name, X(d.x), Z(d.z));
-      if (AL.HOMES.some((h) => h.at === k && AL.S.homes.includes(h.id))) { ctx.fillStyle = '#d1342f'; ctx.beginPath(); ctx.arc(X(d.x + 14), Z(d.z - 14), 4 * sc * 1.4, 0, 7); ctx.fill(); }
-    });
-    AL.LANDMARKS.forEach((l) => { ctx.fillStyle = AL.S.visited.includes(l.id) ? '#f2b33d' : '#9db0a5'; ctx.beginPath(); ctx.arc(X(l.x), Z(l.z), 3.2 * sc * 1.4, 0, 7); ctx.fill(); });
-    const p = AL.Player.pos; const px = X(p.x / AL.W), pz = Z(p.z / AL.W);
-    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(px, pz, 6 * sc * 1.2, 0, 7); ctx.fill();
-    ctx.strokeStyle = '#2fbf71'; ctx.lineWidth = 3; ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(px, pz); ctx.lineTo(px + Math.sin(AL.Player.facing) * 14 * sc, pz + Math.cos(AL.Player.facing) * 14 * sc); ctx.stroke();
-  }
-  Phone.register({
-    id: 'map', name: 'Map & Taxi', color: '#2e9e5b',
-    icon: ic('<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>'),
-    render(body) {
-      const cv = el('canvas', 'minimap'); cv.width = 600; cv.height = 600; body.appendChild(cv);
-      drawMap(cv);
-      const info = el('div', 'group'); body.appendChild(info);
-      const show = () => {
-        info.innerHTML = '';
-        if (!mapSel) { info.appendChild(el('p', 'note', 'Tap a district to see it and book a ride. Red dots are your homes; gold dots are landmarks you have visited.')); return; }
-        const d = AL.D[mapSel], here = AL.Player.district();
-        info.appendChild(el('p', 'note', d.name + ': ' + d.tag));
-        if (mapSel === here) { info.appendChild(el('p', 'note', 'You are here.')); return; }
-        const f = AL.Econ.fare(here || AL.S.at, mapSel);
-        info.appendChild(AL.UI.mk('Book a taxi to ' + d.name, 'A ride-hailing car picks you up where you stand', fmt(f.fare), 'cost', () => { $('phone').hidden = true; AL.Econ.taxi(mapSel); }, AL.S.cash < f.fare));
-      };
-      cv.addEventListener('click', (e) => {
-        const r = cv.getBoundingClientRect(); const mx = ((e.clientX - r.left) / r.width) * 360 - 180, mz = ((e.clientY - r.top) / r.height) * 360 - 180;
-        const k = AL.DKEYS.flat().find((q) => Math.abs(AL.D[q].x - mx) <= 20 && Math.abs(AL.D[q].z - mz) <= 20);
-        mapSel = k || null; drawMap(cv); show();
-      });
-      show();
-    },
-  });
-  /* ---------- Wallet ---------- */
-  Phone.register({
-    id: 'wallet', name: 'Wallet', color: '#b7791f', live: true,
-    icon: ic('<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/>'),
-    render(body) {
-      const S = AL.S;
-      body.appendChild(AL.UI.stats([['Cash', fmt(S.cash)], ['Bank', fmt(S.savings)], ['Property', fmt(AL.homeValue())], ['Businesses', fmt(AL.bizValue(S))], ['Net worth', fmt(AL.worth())], ['Tax paid', fmt(S.taxPaid)]]));
-      body.appendChild(el('p', 'note', 'Deposit cash at Capital Trust Bank in the CBD (08:00–16:00). ATMs in Garki, Wuse, Jabi and the CBD let you withdraw any time.'));
-    },
-  });
   /* ---------- Rich list + city economy ---------- */
   Phone.register({
-    id: 'rich', name: 'Rich List', color: '#8e44ad', live: true,
+    id: 'rich', name: 'Rich List', order: 10, color: '#8e44ad', live: true,
     icon: ic('<path d="M4 20h16M6 20V10M12 20V4M18 20v-7"/>'),
     render(body) {
       const rows = AL.allPlayers().map((x) => ({ me: !!x.me, name: AL.cleanName(x.p.name), color: AL.cleanColor(x.p.color), w: AL.worth(x.p) })).sort((a, b) => b.w - a.w);
@@ -134,23 +82,24 @@
   });
   /* ---------- Contacts ---------- */
   Phone.register({
-    id: 'contacts', name: 'Contacts', color: '#2e6fd8', live: true,
+    id: 'contacts', name: 'Contacts', order: 11, color: '#2e6fd8', live: true,
     icon: ic('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>'),
     render(body) {
       const list = Object.entries(AL.S.rel).sort((a, b) => b[1].f - a[1].f);
-      if (!list.length) { body.appendChild(el('p', 'note', 'Nobody saved yet. Walk up to people around Abuja and press E to talk. Calls and messages come in a later update.')); return; }
+      if (!list.length) { body.appendChild(el('p', 'note', 'Nobody saved yet. Walk up to people around Abuja and press E to talk.')); return; }
+      body.appendChild(el('p', 'note', 'Send money to friends from the Bank app. Friends message you from time to time.'));
       list.forEach(([, r]) => body.appendChild(AL.UI.mk(r.name, r.role + ' · met on day ' + (r.met || 1), r.f >= 50 ? 'Friend' : r.f + '/100', r.f >= 50 ? 'pay' : 'cost', () => {}, false)));
     },
   });
   /* ---------- Activity log ---------- */
   Phone.register({
-    id: 'activity', name: 'Activity', color: '#16a085', live: true,
+    id: 'activity', name: 'Activity', order: 12, color: '#16a085', live: true,
     icon: ic('<path d="M3 12h4l3-8 4 16 3-8h4"/>'),
     render(body) { const ul = el('ul', 'loglist'); AL.S.log.slice(0, 30).forEach((m) => ul.appendChild(el('li', null, m))); body.appendChild(ul); },
   });
   /* ---------- Goals ---------- */
   Phone.register({
-    id: 'goals', name: 'Goals', color: '#d1342f', live: true,
+    id: 'goals', name: 'Goals', order: 13, color: '#b7791f', live: true,
     icon: ic('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>'),
     render(body) {
       body.appendChild(el('h3', 'optl', 'Property ladder'));
@@ -164,7 +113,7 @@
   /* ---------- Settings ---------- */
   let resetArm = 0;
   Phone.register({
-    id: 'settings', name: 'Settings', color: '#55606b',
+    id: 'settings', name: 'Settings', order: 14, color: '#3b4148',
     icon: ic('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
     render(body) {
       body.appendChild(AL.UI.mk('Edit character', 'Change your look, clothes and name', '', '', () => { $('phone').hidden = true; AL.Creator.open(true); }));
@@ -179,14 +128,8 @@
     },
   });
   /* ---------- coming soon (the architecture is ready for them) ---------- */
-  [['Bank app', '#0f6e5c', '<rect x="3" y="9" width="18" height="11" rx="1"/><path d="M2 9l10-6 10 6M7 13v4M12 13v4M17 13v4"/>'],
-    ['Jobs', '#0b7a4b', '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>'],
-    ['Social', '#e67e22', '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>'],
-    ['Food', '#e0a526', '<path d="M4 11h16a8 8 0 0 1-16 0zM12 3v4M8 5v2M16 5v2"/>'],
-    ['Invest', '#16a085', '<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>'],
-    ['Messages', '#2e86c1', '<path d="M4 5h16v11H8l-4 4z"/>']].forEach(([name, color, d]) => Phone.register({ id: name, name, color, icon: ic(d), soon: true }));
+  Phone.register({ id: 'social', name: 'Social', order: 15, color: '#e67e22', icon: ic('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>'), soon: true });
 
-  Phone.mapSelect = (k) => { mapSel = k; Phone.toggle('map'); };
   Phone.bind = () => { $('phHome').onclick = () => Phone.home(); };
   AL.Phone = Phone;
 })(window.AL);

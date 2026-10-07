@@ -76,7 +76,7 @@
   C.open = (edit) => {
     C.editing = !!edit;
     C.draft = AL.cleanLook(AL.S.look);
-    $('pName').value = edit ? AL.S.name : ($('pName').value || '');
+    $('pName').value = edit ? AL.S.name : ($('pName').value || ''); $('pAge').value = edit ? AL.S.age : ($('pAge').value || 25);
     $('ccTitle').textContent = edit ? 'Edit your character' : 'Create your character';
     $('ccIntro').hidden = !!edit;
     $('signupBtn').textContent = edit ? 'Save character' : 'Start my life in Abuja';
@@ -92,14 +92,16 @@
       const btn = $('signupBtn'); btn.disabled = true;
       const nm = AL.cleanName($('pName').value.trim() || 'Hustler');
       if (C.editing) {
-        AL.S.name = nm; AL.S.look = AL.cleanLook(C.draft);
+        AL.S.name = nm; AL.S.look = AL.cleanLook(C.draft); AL.S.age = AL.clamp(parseInt($('pAge').value, 10) || AL.S.age, 18, 65);
+        if (!AL.S.wardrobe.includes(AL.S.look.outfit)) AL.S.wardrobe.push(AL.S.look.outfit);
         AL.log('Changed your look.'); AL.Player.rebuild(); AL.commit();
         $('startOv').hidden = true; btn.disabled = false; AL.toast('Character saved.', 'good'); return;
       }
       btn.textContent = 'Arriving…';
       await AL.ready;
       AL.S = AL.fresh(); AL.S.name = nm; AL.S.look = AL.cleanLook(C.draft); AL.S.started = true;
-      AL.log('Welcome to Abuja, ' + AL.S.name + '. Walk to the green JOBS kiosk on the Garki plaza to start earning.');
+      AL.S.age = AL.clamp(parseInt($('pAge').value, 10) || 25, 18, 65); AL.S.wardrobe = [AL.S.look.outfit];
+      AL.log('Welcome to Abuja, ' + AL.S.name + '. Check your phone: Maps, Jobs and Rides will get you started.');
       AL.emit('new-player');
       $('startOv').hidden = true; btn.disabled = false;
     });

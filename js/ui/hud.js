@@ -36,6 +36,7 @@
     $('eFill').style.width = S.energy + '%';
     $('eTrack').classList.toggle('low', S.energy < 25);
     $('hXp').textContent = S.xp;
+    $('hMood').textContent = Math.round(S.happy); $('mFill').style.width = S.happy + '%'; $('mTrack').classList.toggle('low', S.happy < 25);
     $('xFill').style.width = Math.min(100, (S.xp / 45) * 100) + '%';
     $('hTime').textContent = AL.clock();
     const ph = AL.phase();
@@ -83,12 +84,21 @@
   let act = null;
   AL.on('activity-start', (a) => { act = a; $('activityLabel').textContent = a.label || ''; $('activity').hidden = false; $('prompt').hidden = true; });
   AL.on('activity-end', () => { act = null; $('activity').hidden = true; });
-  AL.on('trip-start', ({ to }) => { $('tripLabel').textContent = 'Taxi to ' + AL.D[to].name + '…'; $('tripBar').hidden = false; $('prompt').hidden = true; HUD.render(); });
-  AL.on('trip-end', ({ to }) => { $('tripBar').hidden = true; banner(AL.D[to].name, AL.D[to].tag); });
+  AL.on('trip-start', ({ to, loc }) => { $('tripLabel').textContent = 'On the way to ' + (loc ? loc.name : AL.D[to].name) + '…'; $('tripBar').hidden = false; $('prompt').hidden = true; HUD.render(); });
+  AL.on('trip-end', ({ to, loc }) => { $('tripBar').hidden = true; banner(loc ? loc.name : AL.D[to].name, AL.D[to].name + ' · ' + AL.clock()); });
   AL.on('fade', () => { const f = $('fade'); f.classList.add('on'); setTimeout(() => f.classList.remove('on'), 700); });
+  AL.on('fade-in', () => { $('fade').classList.add('on'); });
 
-  HUD.tick = () => {
+  HUD.tick = (t) => {
     if (act) { const p = 1 - Math.max(0, act.left) / (act.total || 1); $('activityFill').style.width = Math.round(p * 100) + '%'; }
+    const n = AL.Travel && AL.Travel.Nav.tick(t || 0);
+    const chip = $('navChip');
+    if (!n || AL.busy) { chip.hidden = true; return; }
+    chip.hidden = false;
+    $('navArrow').style.transform = 'rotate(' + (-n.rel) + 'rad)';
+    $('navName').textContent = n.loc.name;
+    const km = n.dist / AL.W * AL.KM_PER_UNIT;
+    $('navDist').textContent = AL.Travel.fmtKm(km) + ' · ' + AL.Travel.fmtMin(km / 5 * 60) + ' walk';
   };
 
   /* ---- buttons and touch controls ---- */
@@ -101,6 +111,7 @@
     $('runBtn').addEventListener('click', () => { const P = AL.Player; P.runToggle = !P.runToggle; $('runBtn').setAttribute('aria-pressed', String(P.runToggle)); });
     $('mapBtn').addEventListener('click', () => AL.emit('toggle-map'));
     $('phoneBtn').addEventListener('click', () => AL.emit('toggle-phone'));
+    $('navStop').addEventListener('click', () => AL.Travel.Nav.clear(false));
     // joystick
     const js = $('joystick'), knob = $('knob');
     let id = null, cx = 0, cy = 0;

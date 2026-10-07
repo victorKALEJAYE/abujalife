@@ -43,9 +43,11 @@
   }
 
   function onCityReady() {
+    AL.Sim.buildLocations();
+    AL.Sim.buildPopulation(240);
     AL.Player.init(scene);
     AL.UI.registerVenues();
-    AL.NPC.spawn(scene, AL.LITE ? 14 : 30);
+    AL.NPC.spawn(scene, AL.LITE ? 10 : 20);
     $('loading').classList.add('done');
     AL.ready.then(() => {
       if (!AL.S.started) { AL.Creator.open(false); }
@@ -54,23 +56,27 @@
   }
   function startPlaying(fresh) {
     $('hud').hidden = false;
+    AL.Life.ensureHome();
+    AL.Sim.initMarket(); AL.Sim.catchUp();
     AL.Player.rebuild();
     const sp = AL.Player.spawnPoint();
     AL.Player.place(sp.x, sp.z, Math.PI);
     AL.NPC.syncOthers();
-    AL.HUD.render();
+    AL.Travel.Nav.place();
+    AL.HUD.render(); AL.commit();
     if (!fresh) AL.toast('Welcome back, ' + AL.cleanName(AL.S.name) + '.');
     AL.started = true;
   }
   AL.on('new-player', () => {
     AL.S.pos = null; AL.commit(); startPlaying(true);
-    AL.toast('Welcome to Abuja! Walk to the glowing kiosks and press E.', 'good');
+    AL.toast('Welcome to Abuja! This is your self-con in Kubwa. Open your phone (P) to find work.', 'good');
   });
   AL.on('loaded', () => { if (AL.started) startPlaying(false); });
   AL.on('new-game', () => {
     const n = AL.S.name, lk = AL.S.look;
-    AL.S = AL.fresh(); AL.S.name = n; AL.S.look = AL.cleanLook(lk); AL.S.started = !!n;
-    AL.commit(); startPlaying(true); AL.toast('A new life begins at Area 1 motor park.', 'good');
+    const age = AL.S.age;
+    AL.S = AL.fresh(); AL.S.name = n; AL.S.look = AL.cleanLook(lk); AL.S.started = !!n; AL.S.age = age; AL.S.wardrobe = [AL.S.look.outfit];
+    startPlaying(true); AL.toast('A new life begins in a Kubwa self-con.', 'good');
   });
   AL.on('exhausted', () => { if (AL.S.started && !AL.busy) AL.Econ.sleep({ collapsed: true }); });
   AL.on('toggle-map', () => { if (AL.Player.trip) return; AL.Player.setMapView(!AL.Player.cam.mapView); });
@@ -97,7 +103,7 @@
   }
 
   /* ---- main loop ---- */
-  let last = performance.now(), hudT = 0;
+  let last = performance.now(), hudT = 0, lodT = 0;
   function loop(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     if (AL.City.ready && AL.Player.char) {
@@ -106,7 +112,8 @@
       AL.NPC.update(dt, AL.Player.pos);
       AL.City.updateTraffic(dt, AL.Player.pos);
       AL.NPC.animateOthers(dt);
-      AL.HUD.tick(); AL.UI.tick(); AL.UI.tickTalk();
+      AL.HUD.tick(now / 1000); AL.UI.tick(); AL.UI.tickTalk();
+      lodT += dt; if (lodT > 0.5) { lodT = 0; AL.City.updateLOD(AL.Player.pos, AL.Player.cam.mapView); }
       hudT += dt; if (hudT > 0.25 && AL.started) { hudT = 0; AL.HUD.render(); }
       updateSky();
     } else if (camera) {

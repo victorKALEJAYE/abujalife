@@ -19,8 +19,17 @@
     if (h !== Time.lastHour) { const first = Time.lastHour === null; Time.lastHour = h; if (!first) AL.emit('hour', h); }
     const ph = AL.phase();
     if (ph !== Time.lastPhase) { const first = Time.lastPhase === null; Time.lastPhase = ph; if (!first) AL.emit('phase', ph); }
+    Time.checkDay();
     if (S.energy <= 0 && !Time.collapsing) { Time.collapsing = true; AL.emit('exhausted'); setTimeout(() => { Time.collapsing = false; }, 3000); }
   };
+  /* fire 'newday' once for every day boundary crossed (06:00), however the clock moved */
+  Time.checkDay = () => {
+    const S = AL.S; if (!S.started) return;
+    const d = AL.day();
+    if (!S.lastDay) S.lastDay = d;
+    if (d > S.lastDay) { const n = d - S.lastDay; S.lastDay = d; AL.emit('newday', n); }
+  };
+  AL.on('change', () => Time.checkDay());
   /* 0 at midnight, 1 at noon: how bright the sun is */
   Time.sunUp = () => Math.max(0, Math.sin(((AL.hour() - 6) / 12) * Math.PI));
   AL.Time = Time;

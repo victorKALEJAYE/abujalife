@@ -80,6 +80,12 @@
     }
     return { x, z };
   };
+  /* is this 3D point inside a solid building? (used to keep the camera out of walls) */
+  City.pointBlocked = (x, y, z) => {
+    const list = City.grid.get(Math.floor(x / City.cell) + ',' + Math.floor(z / City.cell)); if (!list) return false;
+    for (const c of list) if (x > c.minX && x < c.maxX && z > c.minZ && z < c.maxZ && y < c.top + 0.3) return true;
+    return false;
+  };
   City.blocked = (x, z, r) => { const p = City.resolve(x, z, r); return Math.abs(p.x - x) + Math.abs(p.z - z) > 0.01; };
 
   /* ---------- builders ---------- */
@@ -212,11 +218,39 @@
           const c = K.car('#2e9e5b', true); c.scale.setScalar(1.2); c.position.set(1.6, -0.03, 4.2); vg.add(c);
           break;
         }
-        case 'home': { box(vg, 1.4, 2.3, 0.3, '#5b3b2a', 0, 0, 0); box(vg, 1.8, 0.25, 0.5, '#efe6d2', 0, 2.3, 0); signBoard(vg, 'HOME', '#d1342f', 0, 2.85, 0.1, 1.0); break; }
+        case 'home': { box(vg, 1.4, 2.3, 0.3, '#5b3b2a', 0, 0, 0); box(vg, 1.8, 0.25, 0.5, '#efe6d2', 0, 2.3, 0); signBoard(vg, 'RESIDENCES', '#7a3b2e', 0, 2.85, 0.1, 1.6); break; }
         case 'park': {
           box(vg, 5, 0.12, 2.4, '#9aa5ae', 0, 2.6, 0); [-2.3, 2.3].forEach((o) => box(vg, 0.12, 2.6, 0.12, '#555', o, 0, -1.0));
           box(vg, 3.6, 0.1, 0.5, '#8a6a3e', 0, 0.42, -0.6); [-1.6, 1.6].forEach((o) => box(vg, 0.1, 0.42, 0.45, '#5b3b2a', o, 0, -0.6));
           signBoard(vg, 'AREA 1 PARK', '#6f7f8f', 0, 3.1, 0, 2.2);
+          break;
+        }
+        case 'shop': {
+          const st = AL.STORES[k] || { name: 'Shops', kind: 'mall' };
+          box(vg, 7, 4.2, 3, st.kind === 'market' ? '#d9c08f' : '#f1f3f5', 0, 0, -1.6);
+          box(vg, 4.4, 2.6, 0.1, '#7fb7d6', 0, 0, -0.05);
+          box(vg, 7.4, 0.35, 1.4, vt.color, 0, 3.0, 0.4);
+          signBoard(vg, st.name.toUpperCase(), vt.color, 0, 3.75, 0, 5.6);
+          break;
+        }
+        case 'invest': {
+          box(vg, 6.5, 7.5, 3, '#9fc3dc', 0, 0, -1.6);
+          for (let y = 1.4; y < 7.4; y += 1.4) box(vg, 6.6, 0.12, 3.1, '#e6eef4', 0, y, -1.6);
+          box(vg, 1.8, 2.4, 0.1, '#33536b', 0, 0, -0.05);
+          signBoard(vg, 'ABUJA SECURITIES', vt.color, 0, 2.9, 0.05, 4.2);
+          break;
+        }
+        case 'clinic': {
+          box(vg, 7, 4.5, 3, '#ffffff', 0, 0, 1.6);
+          box(vg, 2, 2.4, 0.1, '#9fd3f0', 0, 0, 0.05);
+          box(vg, 0.5, 1.6, 0.12, '#c0392b', 2.4, 2.6, 0.05); box(vg, 1.6, 0.5, 0.12, '#c0392b', 2.4, 3.15, 0.05);
+          signBoard(vg, 'GARKI GENERAL HOSPITAL', vt.color, -1.2, 3.6, 0.0, 4.2);
+          break;
+        }
+        case 'work': {
+          box(vg, 2.6, 1.05, 0.9, '#e8ecef', 0, 0, 0);
+          box(vg, 0.12, 2.6, 0.12, '#3d4f63', -1.2, 0, -0.3); box(vg, 0.12, 2.6, 0.12, '#3d4f63', 1.2, 0, -0.3);
+          signBoard(vg, 'OFFICE', vt.color, 0, 2.2, -0.3, 2.2);
           break;
         }
         case 'bench': {
@@ -274,48 +308,87 @@
     return lm;
   }
 
-  /* ---------- traffic ---------- */
+  /* ---------- traffic: a small pool of cars, spawned only on roads near the player.
+     How many depends on the simulated traffic level of the nearest district. ---------- */
+  const LINES = [];
+  ROADS.forEach((v) => { LINES.push({ axis: 'z', c: v }); LINES.push({ axis: 'x', c: v }); });
   function buildTraffic(world) {
-    const loops = [
-      [[-96, -96], [96, -96], [96, 96], [-96, 96]],
-      [[-48, -48], [48, -48], [48, 48], [-48, 48]],
-      [[0, -96], [0, 96], [48, 96], [48, -96]],
-      [[-96, 0], [96, 0], [96, -48], [-96, -48]],
-      [[-48, -96], [-48, 96], [-96, 96], [-96, -96]],
-    ];
-    const colors = ['#d1342f', '#2e86c1', '#e0a526', '#f4f4f4', '#3b3f46', '#8e44ad', '#16a085', '#ffffff'];
-    loops.forEach((lp, li) => {
-      const n = AL.LITE ? 2 : 3;
-      for (let i = 0; i < n; i++) {
-        const pts = lp.concat([lp[0]]).map((p) => new T.Vector3(p[0] + 2, 0.1, p[1] + 2));
-        const seg = []; let len = 0; for (let j = 1; j < pts.length; j++) { const l = pts[j].distanceTo(pts[j - 1]); seg.push(l); len += l; }
-        const taxi = (li + i) % 3 === 0;
-        const c = K.car(taxi ? '#2e9e5b' : colors[(li * 3 + i) % colors.length], taxi); c.scale.setScalar(0.42); world.add(c);
-        c.traverse((o) => { o.userData.noCollide = true; });
-        City.traffic.push({ obj: c, pts, seg, len, s: (len * i) / n + li * 7, speed: 4.5 + Math.random() * 2.5, cur: 0 });
-      }
-    });
+    const colors = ['#d1342f', '#2e86c1', '#e0a526', '#f4f4f4', '#3b3f46', '#8e44ad', '#16a085', '#c9ced6'];
+    const n = AL.LITE ? 9 : 16;
+    for (let i = 0; i < n; i++) {
+      const taxi = i % 4 === 0;
+      const c = K.car(taxi ? '#2e9e5b' : colors[i % colors.length], taxi); c.scale.setScalar(0.42); c.visible = false; world.add(c);
+      c.traverse((o) => { o.userData.noCollide = true; });
+      City.traffic.push({ obj: c, line: null, s: 0, dir: 1, speed: 5 + Math.random() * 2, cur: 0, active: false });
+    }
   }
+  function spawnCar(car, px, pz) {
+    // pick a road line that passes close to the player
+    const near = LINES.filter((l) => (l.axis === 'z' ? Math.abs(px - l.c) : Math.abs(pz - l.c)) < 60);
+    if (!near.length) { car.active = false; car.obj.visible = false; return; }
+    const l = AL.pick(near);
+    car.line = l; car.dir = Math.random() < 0.5 ? 1 : -1;
+    const along = l.axis === 'z' ? pz : px;
+    car.s = AL.clamp(along + (Math.random() < 0.5 ? -1 : 1) * (25 + Math.random() * 50), -100, 100);
+    car.speed = 4.5 + Math.random() * 2.5; car.cur = car.speed; car.active = true; car.obj.visible = true;
+  }
+  City.trafficTarget = 0;
+  const fwd = new T.Vector3();
+  City.updateTraffic = (dt, playerPos) => {
+    const px = playerPos.x / W, pz = playerPos.z / W;
+    const k = City.districtAt(playerPos.x, playerPos.z).key;
+    const lvl = AL.Sim ? AL.Sim.trafficAt(k).level : 'Moderate';
+    const want = Math.min(City.traffic.length, lvl === 'Heavy' ? 16 : lvl === 'Moderate' ? 10 : 5) * (AL.LITE ? 0.6 : 1);
+    City.trafficTarget = Math.round(want);
+    let active = 0;
+    City.traffic.forEach((n) => {
+      if (!n.active) { if (active < City.trafficTarget) { spawnCar(n, px, pz); } if (!n.active) return; }
+      active++;
+      const l = n.line;
+      const lane = 2 * n.dir; // drive on the right-hand side of the road for the direction of travel
+      const along = l.axis === 'z' ? pz : px;
+      if (Math.abs(n.s - along) > 95 || Math.abs(n.s) > 104 || active > City.trafficTarget + 2) { n.active = false; n.obj.visible = false; return; }
+      let want = n.speed;
+      const ox = l.axis === 'z' ? l.c - lane : n.s, oz = l.axis === 'z' ? n.s : l.c + lane;
+      const dx = px - ox, dz = pz - oz, d = Math.hypot(dx, dz);
+      fwd.set(l.axis === 'x' ? n.dir : 0, 0, l.axis === 'z' ? n.dir : 0);
+      if (d < 4.5 && (dx * fwd.x + dz * fwd.z) / (d || 1) > 0.4) want = 0;
+      n.cur = AL.damp(n.cur, want, 4, dt);
+      n.s += n.cur * n.dir * dt;
+      n.obj.position.set(ox, 0.1, oz);
+      n.obj.rotation.y = l.axis === 'z' ? (n.dir > 0 ? 0 : Math.PI) : (n.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+    });
+  };
   City.followPath = (obj, pts, seg, s) => {
     let i = 0; while (i < seg.length - 1 && s > seg[i]) { s -= seg[i]; i++; }
     const a = pts[i], b = pts[i + 1], f = Math.min(1, s / seg[i]);
     obj.position.lerpVectors(a, b, f);
     const dx = b.x - a.x, dz = b.z - a.z; if (dx || dz) obj.rotation.y = Math.atan2(dx, dz);
   };
-  const fwd = new T.Vector3();
-  City.updateTraffic = (dt, playerPos) => {
-    City.traffic.forEach((n) => {
-      // brake when the player (or the end of a queue) is just ahead
-      let want = n.speed;
-      if (playerPos) {
-        const px = playerPos.x / W, pz = playerPos.z / W;
-        const dx = px - n.obj.position.x, dz = pz - n.obj.position.z, d = Math.hypot(dx, dz);
-        fwd.set(Math.sin(n.obj.rotation.y), 0, Math.cos(n.obj.rotation.y));
-        if (d < 4.5 && (dx * fwd.x + dz * fwd.z) / (d || 1) > 0.4) want = 0;
-      }
-      n.cur = AL.damp(n.cur, want, 4, dt);
-      n.s = (n.s + n.cur * dt) % n.len;
-      City.followPath(n.obj, n.pts, n.seg, n.s);
+
+  /* ---------- level of detail: full districts near the player, cheap stand-ins far away ---------- */
+  function buildImpostor(world, k) {
+    const d = D[k], g = new T.Group(); g.position.set(d.x, 0, d.z); g.visible = false; world.add(g);
+    K.box(g, 40, 0.6, 40, d.base, 0, 0, 0).castShadow = false;
+    const R = AL.rand(k.length * 131 + 7);
+    const tall = k === 'cbd' ? 22 : k === 'jabi' || k === 'wuse' ? 6 : 4;
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      if (i === 0 && (j === 0 || j === 1)) continue;
+      const h = (0.5 + R()) * tall;
+      const b = K.box(g, 8 + R() * 3, h, 8 + R() * 3, k === 'cbd' ? '#cfd8df' : '#e9e0cf', i * 13.3, 0.6, j * 13.3); b.castShadow = false;
+    }
+    const L = K.label(d.name); L.position.set(0, k === 'cbd' ? 44 : 20, 0); g.add(L);
+    g.traverse((o) => { o.userData.noCollide = true; });
+    d.impostor = g;
+  }
+  City.FULL_RANGE = AL.LITE ? 105 : 130; // map units
+  City.updateLOD = (playerPos, mapView) => {
+    const px = playerPos.x / W, pz = playerPos.z / W;
+    AL.DKEYS.flat().forEach((k) => {
+      const d = D[k]; if (!d.group) return;
+      const dist = Math.max(Math.abs(d.x - px), Math.abs(d.z - pz));
+      const full = mapView || dist < City.FULL_RANGE;
+      d.group.visible = full; if (d.impostor) d.impostor.visible = !full;
     });
   };
 
@@ -323,7 +396,7 @@
   City.build = (scene, onDone) => {
     const world = new T.Group(); world.scale.setScalar(W); scene.add(world); City.world = world;
     buildGround(world); buildRoads(world);
-    const tasks = AL.DKEYS.flat().map((k) => () => buildDistrict(world, k));
+    const tasks = AL.DKEYS.flat().map((k) => () => { buildDistrict(world, k); buildImpostor(world, k); });
     tasks.push(() => buildLandmarks(world));
     const nTrees = AL.LITE ? 50 : 110;
     for (let i = 0; i < nTrees; i += 10) tasks.push(() => {

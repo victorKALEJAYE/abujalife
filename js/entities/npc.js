@@ -1,143 +1,133 @@
-/* Abuja Life — pedestrians with names, jobs and daily routines.
-   Each NPC has a home, a workplace and a leisure spot. The schedule decides
-   where they want to be at the current hour; they walk the road edges between
-   districts, wander and chat on plazas, and go indoors at night. Far from the
-   player they move quickly (as if by bus) so the city keeps its rhythm. */
+/* Abuja Life — the people you can see. A small pool of reusable 3D actors is
+   handed to the residents (AL.Sim.people) who, according to their schedule,
+   are in the player's area right now. Everyone else stays as data.
+   On roads between districts a few commuters walk past. */
 (function (AL) {
   'use strict';
   const T = AL.T;
   if (!T) return;
   const W = AL.W, D = AL.D;
-  const NPC = { list: [], others: {} };
-  const R = AL.rand(20261007); // fixed seed: the same people live in Abuja every session
-  const LEISURE = ['wuse', 'jabi', 'garki', 'maitama', 'cbd'];
-  const HOMES = ['kubwa', 'gwarinpa', 'karu', 'nyanya', 'lugbe', 'gwagwalada', 'apo', 'kuje', 'bwari', 'asokoro'];
+  const NPC = { pool: [], others: {}, area: null, reassignT: 0 };
+  const R = Math.random;
 
-  function lookFor(role, fem) {
-    const style = role.style === 'ankara' && !fem ? 'kaftan' : role.style;
-    const hairF = ['braids', 'gele', 'bun', 'afro'], hairM = ['lowcut', 'bald', 'cap', 'fila', 'afro'];
-    return AL.cleanLook({
-      skin: AL.pick(AL.SKINS.slice(1), R), hair: AL.pick(fem ? hairF : hairM, R), outfit: style,
-      color: AL.pick(AL.OUTFIT_COLORS, R), frame: fem ? 'f' : 'm', body: AL.pick(['slim', 'regular', 'regular', 'broad'], R),
-    });
-  }
-  function plazaPoint(k) { const a = R() * Math.PI * 2, r = 4 + R() * 9; return { x: D[k].x * W + Math.cos(a) * r, z: D[k].z * W + Math.sin(a) * r }; }
+  function plazaPoint(k) { const a = R() * Math.PI * 2, r = 4 + R() * 10; return { x: D[k].x * W + Math.cos(a) * r, z: D[k].z * W + Math.sin(a) * r }; }
 
   NPC.spawn = (scene, count) => {
     NPC.scene = scene;
     for (let i = 0; i < count; i++) {
-      const role = AL.NPC_ROLES[i % AL.NPC_ROLES.length];
-      const fem = role.style === 'ankara' ? true : R() < 0.45;
-      const first = AL.pick(fem ? AL.NPC_FIRST_F : AL.NPC_FIRST_M, R), last = AL.pick(AL.NPC_LAST, R);
-      const look = lookFor(role, fem);
-      const ch = AL.Character.create(look);
-      const n = {
-        id: 'npc' + i, name: first + ' ' + last, first, role: role.role, work: role.work,
-        home: AL.pick(HOMES, R), leisure: AL.pick(LEISURE, R), start: role.start + (R() - 0.5), end: role.end + (R() - 0.5),
-        char: ch, root: ch.root, at: null, path: null, s: 0, wait: R() * 4, target: null, hidden: false, talking: false,
-        speed: 1.25 + R() * 0.4, facing: 0, chat: null,
-      };
-      n.at = desired(n).k;
-      const p = plazaPoint(n.at);
-      n.root.position.set(p.x, AL.City.groundY(p.x, p.z), p.z);
-      scene.add(n.root);
-      NPC.list.push(n);
+      const a = { id: 'npc-a' + i, rec: null, char: null, root: new T.Group(), path: null, s: 0, wait: 0, chat: 0, talking: false, facing: 0, speed: 1.3, mode: 'idle' };
+      a.root.visible = false; scene.add(a.root); NPC.pool.push(a);
       AL.Interact.add({
-        id: n.id, r: 2.6, priority: 0.5,
-        getPos: () => n.root.position,
-        hidden: () => n.hidden || !n.root.visible,
+        id: a.id, r: 2.6, priority: 0.5,
+        getPos: () => a.root.position,
+        hidden: () => !a.rec || !a.root.visible,
         verb: () => 'Talk',
-        title: () => n.name,
-        sub: () => n.role + (AL.S.rel[n.id] ? ' · friendship ' + AL.S.rel[n.id].f : ''),
-        use: () => AL.emit('talk', n),
+        title: () => (a.rec ? a.rec.name : ''),
+        sub: () => (a.rec ? a.rec.role + (AL.S.rel[a.rec.id] ? ' · friendship ' + AL.S.rel[a.rec.id].f : '') : ''),
+        use: () => AL.emit('talk', a),
       });
     }
   };
+  /* give an actor a resident: rebuild its body only when the person changes */
+  function assign(a, rec, pos) {
+    if (a.rec !== rec) {
+      if (a.char) a.root.remove(a.char.root);
+      a.rec = rec; a.char = AL.Character.create(AL.Sim.lookFor(rec)); a.root.add(a.char.root);
+      // the dialogue reads these fields
+      a.relId = rec.id; a.name = rec.name; a.first = rec.first; a.role = rec.role; a.home = rec.home; a.work = rec.work; a.at = rec.work;
+    }
+    a.root.position.set(pos.x, AL.City.groundY(pos.x, pos.z), pos.z); a.root.visible = true;
+    a.path = null; a.wait = R() * 3; a.chat = 0; a.speed = 1.2 + R() * 0.45;
+  }
+  function release(a) { a.root.visible = false; a.rec = null; a.path = null; a.mode = 'idle'; }
 
-  /* where the schedule says this person should be now */
-  function desired(n) {
-    const h = AL.hour();
-    const inRange = (a, b) => (b > 24 ? (h >= a || h < b - 24) : (h >= a && h < b));
-    if (inRange(n.start, n.end)) return { k: n.work, mode: 'work' };
-    if (inRange(n.start - 1.2, n.start)) return { k: n.work, mode: 'commute' };
-    const e = n.end % 24;
-    if (inRange(e, e + 3.5) && n.leisure) return { k: n.leisure, mode: 'leisure' };
-    if (h >= 6 && h < 21) return { k: n.home, mode: 'errand' };
-    return { k: n.home, mode: 'home' };
+  /* decide who should be around the player (runs a few times a second, not every frame) */
+  function reassign(playerPos) {
+    const da = AL.City.districtAt(playerPos.x, playerPos.z);
+    const area = da.inside || da.dist < 26 ? da.key : 'road';
+    const want = [];
+    if (area !== 'road') {
+      const people = AL.Sim.peopleIn(area);
+      people.forEach((p) => want.push(p));
+    } else {
+      // commuters on the road: anyone currently travelling between home and work
+      AL.Sim.people.forEach((p) => { if (Sim().whereIs(p).moving) want.push(p); });
+    }
+    const max = NPC.pool.length;
+    const pick = want.slice(0, area === 'road' ? Math.min(5, max) : max);
+    const keep = new Set(pick);
+    // free actors whose person has left the area
+    NPC.pool.forEach((a) => { if (a.rec && (!keep.has(a.rec) || NPC.area !== area) && !a.talking) release(a); });
+    const busy = new Set(NPC.pool.filter((a) => a.rec).map((a) => a.rec));
+    pick.forEach((p) => {
+      if (busy.has(p)) return;
+      const a = NPC.pool.find((x) => !x.rec); if (!a) return;
+      if (area === 'road') {
+        const ang = R() * Math.PI * 2, r = 30 + R() * 50;
+        assign(a, p, { x: playerPos.x + Math.cos(ang) * r, z: playerPos.z + Math.sin(ang) * r }); a.mode = 'walker';
+        a.dir = { x: Math.cos(ang + Math.PI / 2), z: Math.sin(ang + Math.PI / 2) };
+      } else { assign(a, p, plazaPoint(area)); a.mode = 'local'; a.k = area; }
+    });
+    NPC.area = area;
   }
-  function routeBetween(from, to, start, end) {
-    const A = D[from], B = D[to], e = 20.8;
-    const raw = [[A.x + 1.5, A.z + 11], [A.x + 1.5, A.z + e], [A.x + e, A.z + e], [A.x + e, B.z + e], [B.x + 1.5, B.z + e], [B.x + 1.5, B.z + 11]];
-    const pts = [new T.Vector3(start.x, 0, start.z)];
-    raw.forEach(([x, z]) => { const v = new T.Vector3(x * W, 0, z * W); if (pts[pts.length - 1].distanceTo(v) > 0.5) pts.push(v); });
-    pts.push(new T.Vector3(end.x, 0, end.z));
-    const seg = []; let len = 0; for (let i = 1; i < pts.length; i++) { const l = pts[i].distanceTo(pts[i - 1]); seg.push(l); len += l; }
-    return { pts, seg, len };
-  }
-  function localRoute(start, end) {
-    const pts = [new T.Vector3(start.x, 0, start.z), new T.Vector3(end.x, 0, end.z)];
-    const l = pts[0].distanceTo(pts[1]);
-    return { pts, seg: [l], len: l };
-  }
+  const Sim = () => AL.Sim;
 
-  const tmp = new T.Vector3();
   NPC.update = (dt, playerPos) => {
-    const near = AL.LITE ? 110 : 160;
-    NPC.list.forEach((n) => {
-      const dx = n.root.position.x - playerPos.x, dz = n.root.position.z - playerPos.z;
+    NPC.reassignT -= dt;
+    if (NPC.reassignT <= 0) { NPC.reassignT = 1.5; reassign(playerPos); }
+    NPC.pool.forEach((a) => {
+      if (!a.rec) return;
+      const dx = a.root.position.x - playerPos.x, dz = a.root.position.z - playerPos.z;
       const dist = Math.hypot(dx, dz);
-      if (n.talking) {
-        n.root.visible = true; n.char.setState('talk');
-        n.facing = AL.angleDamp(n.facing, Math.atan2(-dx, -dz), 8, dt); n.root.rotation.y = n.facing;
-        n.char.update(dt, 0); return;
+      if (a.talking) {
+        a.char.setState('talk');
+        a.facing = AL.angleDamp(a.facing, Math.atan2(-dx, -dz), 8, dt); a.root.rotation.y = a.facing;
+        a.char.update(dt, 0); return;
       }
-      const want = desired(n);
-      if (want.mode === 'home' && n.at === n.home && !n.path) { n.hidden = true; }
-      else if (n.hidden && want.mode !== 'home') { n.hidden = false; const p = plazaPoint(n.home); n.root.position.set(p.x, AL.City.groundY(p.x, p.z), p.z); }
-      // plan
-      if (!n.path) {
-        if (want.k !== n.at) {
-          n.path = routeBetween(n.at, want.k, n.root.position, plazaPoint(want.k)); n.s = 0; n.dest = want.k; n.hidden = false;
-        } else if (!n.hidden) {
-          n.wait -= dt;
-          if (n.wait <= 0) {
-            if (R() < 0.35) { n.chat = 2 + R() * 4; n.wait = n.chat + 1; }
-            else { n.path = localRoute(n.root.position, plazaPoint(n.at)); n.s = 0; n.dest = n.at; }
+      let moving = false;
+      if (a.mode === 'walker') {
+        const nx = a.root.position.x + a.dir.x * a.speed * dt, nz = a.root.position.z + a.dir.z * a.speed * dt;
+        const r = AL.City.resolve(nx, nz, 0.3); a.root.position.x = r.x; a.root.position.z = r.z;
+        a.facing = Math.atan2(a.dir.x, a.dir.z); moving = true;
+        if (dist > 140) { release(a); return; }
+      } else {
+        if (!a.path) {
+          a.wait -= dt;
+          if (a.wait <= 0) {
+            if (R() < 0.3) { a.chat = 2 + R() * 4; a.wait = a.chat + 1; }
+            else {
+              const end = plazaPoint(a.k);
+              const s0 = new T.Vector3(a.root.position.x, 0, a.root.position.z), s1 = new T.Vector3(end.x, 0, end.z);
+              a.path = { pts: [s0, s1], seg: [s0.distanceTo(s1)], len: s0.distanceTo(s1) }; a.s = 0;
+            }
+          }
+        }
+        if (a.path) {
+          a.s += a.speed * dt;
+          if (a.s >= a.path.len) { a.path = null; a.wait = 2 + R() * 7; }
+          else {
+            AL.City.followPath(a.root, a.path.pts, a.path.seg, a.s); a.facing = a.root.rotation.y; moving = true;
+            const r = AL.City.resolve(a.root.position.x, a.root.position.z, 0.3); a.root.position.x = r.x; a.root.position.z = r.z;
           }
         }
       }
-      // move
-      let moving = false;
-      if (n.path) {
-        const fast = dist > 140;
-        const sp = fast ? 28 : n.speed;
-        n.s += sp * dt;
-        if (n.s >= n.path.len) {
-          const end = n.path.pts[n.path.pts.length - 1];
-          n.root.position.x = end.x; n.root.position.z = end.z; n.at = n.dest; n.path = null; n.wait = 2 + R() * 8;
-        } else {
-          AL.City.followPath(n.root, n.path.pts, n.path.seg, n.s);
-          n.facing = n.root.rotation.y; moving = true;
-          if (dist < 60) { const r = AL.City.resolve(n.root.position.x, n.root.position.z, 0.3); n.root.position.x = r.x; n.root.position.z = r.z; }
-        }
-      }
-      n.root.position.y = AL.damp(n.root.position.y, AL.City.groundY(n.root.position.x, n.root.position.z), 8, dt);
-      n.root.rotation.y = n.facing;
-      n.root.visible = !n.hidden && dist < near;
-      if (n.root.visible && dist < near * 0.7) {
-        if (moving) n.char.setState('walk');
-        else if (n.chat > 0) { n.chat -= dt; n.char.setState('talk'); }
-        else n.char.setState('idle');
-        n.char.update(dt, moving ? n.speed : 0);
+      a.root.position.y = AL.damp(a.root.position.y, AL.City.groundY(a.root.position.x, a.root.position.z), 8, dt);
+      a.root.rotation.y = a.facing;
+      if (dist < 90) {
+        if (moving) a.char.setState('walk');
+        else if (a.chat > 0) { a.chat -= dt; a.char.setState('talk'); }
+        else a.char.setState('idle');
+        a.char.update(dt, moving ? a.speed : 0);
       }
     });
   };
+  NPC.visibleCount = () => NPC.pool.filter((a) => a.rec).length;
 
   /* ---- other online players: shown standing on the plaza of the district where they last acted ---- */
   NPC.syncOthers = () => {
     if (!NPC.scene) return;
     const now = Date.now(), active = {};
-    const list = Object.entries(AL.others).filter(([id, p]) => id !== AL.uid && p && D[p.at] && (now - (Number(p.updatedAt) || 0)) < 30 * 60 * 1000).slice(0, 24);
+    const list = Object.entries(AL.others).filter(([id, p]) => id !== AL.uid && p && D[p.at] && (now - (Number(p.updatedAt) || 0)) < 30 * 60 * 1000).slice(0, 12);
     const per = {};
     list.forEach(([id, p]) => {
       active[id] = true;
@@ -156,6 +146,12 @@
     });
     Object.keys(NPC.others).forEach((id) => { if (!active[id]) { NPC.scene.remove(NPC.others[id].g); delete NPC.others[id]; } });
   };
-  NPC.animateOthers = (dt) => { Object.values(NPC.others).forEach((o) => o.ch.update(dt, 0)); };
+  NPC.animateOthers = (dt) => {
+    const P = AL.Player && AL.Player.pos;
+    Object.values(NPC.others).forEach((o) => {
+      const near = !P || Math.hypot(o.g.position.x - P.x, o.g.position.z - P.z) < 120;
+      o.g.visible = near; if (near) o.ch.update(dt, 0);
+    });
+  };
   AL.NPC = NPC;
 })(window.AL);

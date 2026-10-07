@@ -18,8 +18,9 @@
   P.spawnPoint = () => {
     const S = AL.S;
     if (S.pos) return { x: S.pos.x, z: S.pos.z };
-    const p = AL.City.districtWorld('garki', -1.6, 4.6);
-    return p;
+    const r = AL.residence();
+    if (r) return AL.City.districtWorld(r.at, 0, -5.2);
+    return AL.City.districtWorld('garki', -1.6, 4.6);
   };
   P.init = (scene) => {
     P.scene = scene;
@@ -122,25 +123,32 @@
     P.place(p.x, p.z, home ? 0 : Math.PI);
     AL.emit('fade');
   });
-  AL.on('trip', ({ from, to }) => startTrip(from, to));
   P.skipTrip = () => { if (P.trip) P.trip.s = P.trip.len; };
-
-  function startTrip(from, to) {
+  /* place the player at a location's arrival point, facing it */
+  P.arriveAt = (loc) => {
+    const p = AL.Sim.arrivalWorld(loc);
+    P.root.visible = true; P.place(p.x, p.z, Math.PI);
+  };
+  /* watch the ride: a car drives the road route while the clock advances with it */
+  P.watchTrip = (loc, q, mode, onEnd) => {
+    const from = AL.City.districtAt(P.pos.x, P.pos.z).key, to = loc.district;
     const A = AL.D[from], B = AL.D[to];
-    const raw = [[P.pos.x / W, P.pos.z / W], [A.x + 1.5, A.z + 24], [A.x + 24, A.z + 24], [A.x + 24, B.z + 24], [B.x + 1.5, B.z + 24], [B.x + 1.5, B.z + 11]];
+    const raw = [[P.pos.x / W, P.pos.z / W], [A.x + 1.5, A.z + 24], [A.x + 24, A.z + 24], [A.x + 24, B.z + 24], [B.x + 1.5, B.z + 24], [loc.ax, loc.az]];
     const pts = [];
     raw.forEach(([x, z]) => { const v = new T.Vector3(x * W, 0, z * W); if (!pts.length || pts[pts.length - 1].distanceTo(v) > 0.5) pts.push(v); });
     const seg = []; let len = 0; for (let i = 1; i < pts.length; i++) { const l = pts[i].distanceTo(pts[i - 1]); seg.push(l); len += l; }
-    const car = AL.Kit.car('#2e9e5b', true); car.scale.setScalar(W * 0.42); P.scene.add(car);
+    const color = mode === 'ride' ? '#c9ced6' : mode === 'bus' ? '#2e9e5b' : '#2e9e5b';
+    const car = AL.Kit.car(color, mode === 'taxi'); car.scale.setScalar(W * (mode === 'bus' ? 0.62 : 0.42)); P.scene.add(car);
     P.standUp(); P.root.visible = false; AL.busy = true;
-    P.trip = { pts, seg, len, s: 0, speed: AL.reduceMotion ? 1e6 : 60, car, to };
-    AL.emit('trip-start', { to });
-  }
+    const secs = AL.reduceMotion ? 0.3 : AL.clamp(len / 70, 6, 16);
+    P.trip = { pts, seg, len, s: 0, speed: len / secs, car, loc, hours: q.mins / 60, onEnd };
+    AL.emit('trip-start', { to: to, loc });
+  };
   function endTrip() {
     const t = P.trip; P.scene.remove(t.car); P.trip = null;
-    const p = AL.City.districtWorld(t.to, 1.5, 9.5);
-    P.root.visible = true; P.place(p.x, p.z, Math.PI);
-    AL.busy = false; AL.emit('trip-end', { to: t.to });
+    P.arriveAt(t.loc);
+    AL.busy = false; AL.emit('trip-end', { to: t.loc.district, loc: t.loc });
+    if (t.onEnd) t.onEnd();
     AL.Interact.refresh();
   }
 
@@ -150,7 +158,8 @@
     if (!P.char) return;
     // taxi trip
     if (P.trip) {
-      const t = P.trip; t.s += t.speed * dt;
+      const t = P.trip; const before = t.s; t.s = Math.min(t.len, t.s + t.speed * dt);
+      AL.S.t += t.hours * ((t.s - before) / t.len);
       if (t.s >= t.len) { endTrip(); }
       else {
         AL.City.followPath(t.car, t.pts, t.seg, t.s);
@@ -229,6 +238,15 @@
       c.target.y + Math.sin(pitch) * d,
       c.target.z + Math.cos(c.yaw) * Math.cos(pitch) * d,
     );
+    // keep the camera out of buildings: walk from the player towards the camera and stop at the first wall
+    if (!c.mapView) {
+      const tx = c.target.x, ty = c.target.y, tz = c.target.z;
+      const dx = cam.position.x - tx, dy = cam.position.y - ty, dz = cam.position.z - tz, len = Math.hypot(dx, dy, dz);
+      for (let t = 0.6; t < len; t += 0.4) {
+        const f = t / len;
+        if (AL.City.pointBlocked(tx + dx * f, ty + dy * f, tz + dz * f)) { const k = Math.max(0.8, t - 0.5) / len; cam.position.set(tx + dx * k, ty + dy * k, tz + dz * k); break; }
+      }
+    }
     const floor = AL.City.groundY(cam.position.x, cam.position.z) + 0.6;
     if (cam.position.y < floor) cam.position.y = floor;
     cam.lookAt(c.target);

@@ -41,8 +41,9 @@
     if (AL.busy || s.homes.includes(h.id)) return;
     if (AL.left(h) <= 0) return AL.toast('Sold out. Every ' + h.name.toLowerCase() + ' in ' + D[h.at].name + ' has an owner.');
     const price = AL.priceOf(h);
-    if (s.cash < price) return AL.toast('You need ' + fmt(price - s.cash) + ' more cash. Withdraw savings at the bank.');
-    s.cash -= price; s.homes.push(h.id); s.paid[h.id] = price;
+    if (s.cash + s.savings < price) return AL.toast('You need ' + fmt(price - s.cash - s.savings) + ' more across cash and bank.');
+    AL.Life.pay(price, 'Property purchase: ' + h.name + ', ' + D[h.at].name); s.homes.push(h.id); s.paid[h.id] = price;
+    if (!s.home) s.home = { kind: 'own', id: h.id };
     AL.log('Bought a ' + h.name.toLowerCase() + ' in ' + D[h.at].name + ' for ' + fmt(price) + '. It earns rent every night.');
     AL.toast('Congratulations on your new ' + h.name.toLowerCase() + '!', 'good');
     AL.commit(); AL.emit('homes');
@@ -69,7 +70,7 @@
   };
   E.buyFurn = (f) => {
     const s = S();
-    if (!AL.bestHome()) return AL.toast('Buy a home first.');
+    if (!AL.residence()) return AL.toast('Rent or buy a home first.');
     if (s.furn.includes(f.id)) return;
     if (s.cash < f.cost) return AL.toast('You need ' + fmt(f.cost - s.cash) + ' more cash.');
     s.cash -= f.cost; s.furn.push(f.id); AL.log('Bought a ' + f.name.toLowerCase() + ' for your home.');
@@ -77,7 +78,7 @@
   };
   E.paint = (c) => {
     const s = S();
-    if (!AL.bestHome() || c === s.wall) return;
+    if (!AL.residence() || c === s.wall) return;
     if (s.cash < AL.PAINT_COST) return AL.toast('Painting costs ' + fmt(AL.PAINT_COST) + '.');
     s.cash -= AL.PAINT_COST; s.wall = c; AL.log('Repainted your home.');
     AL.commit(); AL.emit('home-changed');
@@ -101,7 +102,7 @@
   /* overnight: interest, business profit, rent; wake at home or at the motor park */
   E.sleep = (opts = {}) => {
     const s = S();
-    const best = opts.park ? null : AL.bestHome();
+    const best = opts.park ? null : AL.residence();
     const rent = Math.round(AL.homeValue() * AL.RENT_RATE);
     const interest = Math.round(s.savings * AL.INTEREST);
     if (interest > 0) s.savings += interest;
