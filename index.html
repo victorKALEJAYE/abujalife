@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Abuja Life</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="css/game.css">
+<script>window.AL = { EDITION: 'public' };</script>
+
+</head>
+<body>
+<div id="game">
+  <canvas id="scene" aria-label="Abuja Life: the 3D city. Move with WASD or the joystick, drag to look around."></canvas>
+
+  <div class="hud" id="hud" hidden>
+    <div class="hud-tl">
+      <div class="who glass">
+        <div class="avatar" id="hAvatar">A</div>
+        <div><div class="who-name" id="hName">Player</div><div class="who-sub" id="hRole">New in Abuja</div></div>
+        <div class="money">
+          <div class="cash"><small>Cash</small><b id="hCash">₦0</b></div>
+          <div><small>Bank</small><b id="hBank">₦0</b></div>
+        </div>
+      </div>
+      <div class="bars glass">
+        <div class="barrow">Energy<div class="track" id="eTrack"><i id="eFill"></i></div><b id="hEnergy">100</b></div>
+        <div class="barrow">Hustle<div class="track xp"><i id="xFill"></i></div><b id="hXp">0</b></div>
+      </div>
+    </div>
+
+    <div class="hud-tr">
+      <div class="clock glass"><span id="hPhaseIcon"></span><div><b id="hTime">06:00</b><small id="hDay">Day 1 · Morning</small></div></div>
+      <div class="place glass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg><span id="hPlace">Garki</span></div>
+    </div>
+
+    <div class="notices" id="notices" aria-live="polite"></div>
+    <div class="district-banner" id="banner"><b id="bannerName">Garki</b><span id="bannerTag"></span></div>
+
+    <div class="prompt glass" id="prompt" hidden role="button" tabindex="0">
+      <span class="keycap" id="promptKey">E</span>
+      <div><div class="pv" id="promptVerb">Talk</div><div class="pt" id="promptSub"></div></div>
+    </div>
+    <div class="activity glass" id="activity" hidden><span id="activityLabel">Working…</span><div class="track"><i id="activityFill"></i></div></div>
+    <div class="tripbar glass" id="tripBar" hidden><span id="tripLabel">On the way…</span><button class="btn" type="button" id="skipTrip">Skip ride</button></div>
+
+    <div class="help glass desk-only"><kbd>W A S D</kbd> move · <kbd>Shift</kbd> run · <kbd>E</kbd> interact · <kbd>M</kbd> map · <kbd>P</kbd> phone · drag to look</div>
+    <div class="joystick touch-only" id="joystick"><div class="knob" id="knob"></div></div>
+
+    <div class="hud-br">
+      <button class="round touch-only" type="button" id="runBtn" aria-pressed="false" aria-label="Run">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="14" cy="4.5" r="2"/><path d="M8 21l3-6 3 2v5M6 12l3-4 4 1 2 4 3 1"/></svg><small>Run</small></button>
+      <button class="round" type="button" id="mapBtn" aria-label="Map view">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg><small>Map</small></button>
+      <button class="round" type="button" id="phoneBtn" aria-label="Open phone">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg><small>Phone</small><span class="dot" id="phoneDot" hidden></span></button>
+      <button class="round big touch-only" type="button" id="useBtn" aria-label="Interact">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11.5V4a1.5 1.5 0 0 1 3 0v7.5M14 11.5V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L3 14a1.5 1.5 0 0 1 2.4-1.8L8 15"/></svg></button>
+    </div>
+  </div>
+
+  <aside class="sheet glass" id="sheet" hidden aria-live="polite">
+    <div class="sheet-head"><div class="badge" id="sheetBadge">JOB</div><div><h2 id="sheetTitle">Venue</h2><p id="sheetSub"></p></div>
+      <button class="x" type="button" id="sheetClose" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </aside>
+
+  <div class="dialog glass" id="dialog" hidden>
+    <div class="who-line"><div class="avatar" id="dlgAvatar">M</div><div><b id="dlgName">Name</b><br><span id="dlgRole">Role</span></div><span class="heart" id="dlgHeart"></span></div>
+    <p class="say" id="dlgSay"></p>
+    <div class="row" id="dlgOpts"></div>
+  </div>
+
+  <div class="phone" id="phone" hidden>
+    <div class="ph-status"><span id="phTime">06:00</span><span>ABJ 4G</span></div>
+    <div class="ph-body" id="phBody"></div>
+    <div class="ph-nav"><button type="button" id="phHome" aria-label="Phone home screen"></button></div>
+  </div>
+
+  <div class="overlay" id="startOv" hidden>
+    <form class="card creator" id="startForm">
+      <div class="brandmark">Abuja <span>Life</span></div>
+      <h2 id="ccTitle">Create your character</h2>
+      <p id="ccIntro">You arrive at Area 1 motor park in Garki with ₦5,000 and a dream. Walk the city, find work, eat, sleep, buy property and climb from a Kubwa self-con to an Asokoro villa.</p>
+      <div class="cc">
+        <div class="ccprev"><canvas id="preview" width="400" height="500" aria-label="Preview of your character"></canvas><span class="formnote">Drag to turn</span></div>
+        <div class="ccopts">
+          <label for="pName" class="optl">Player name</label>
+          <input id="pName" maxlength="16" placeholder="e.g. Amaka" autocomplete="off" required>
+          <span class="optl">Body</span><div class="chips" id="optFrame"></div><div class="chips" id="optBody"></div>
+          <span class="optl">Skin tone</span><div class="swatches" id="optSkin"></div>
+          <span class="optl">Hair</span><div class="chips" id="optHair"></div>
+          <span class="optl">Outfit</span><div class="chips" id="optOutfit"></div>
+          <span class="optl">Outfit colour</span><div class="swatches" id="optColor"></div>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn primary" type="submit" id="signupBtn">Start my life in Abuja</button>
+        <button class="btn" type="button" id="ccCancel" hidden>Cancel</button>
+      </div>
+      <span class="formnote" id="signupNote">Your player saves on this device.</span>
+    </form>
+  </div>
+
+  <div class="overlay" id="bizOv" hidden>
+    <form class="card" id="bizForm">
+      <h2 id="bizTitle">Start a business</h2>
+      <p id="bizInfo"></p>
+      <label for="bizName" class="optl">Business name</label>
+      <input id="bizName" maxlength="28" autocomplete="off" required>
+      <div class="row"><button class="btn primary" type="submit">Open for business</button><button class="btn" type="button" id="bizCancel">Cancel</button></div>
+    </form>
+  </div>
+
+  <div class="overlay" id="homeOv" hidden>
+    <div class="card homecard">
+      <div class="homehead"><h2 id="homeTitle">My home</h2><div class="row"><button class="btn primary" type="button" id="homeSleep">Sleep till morning</button><button class="btn" type="button" id="homeClose">Leave</button></div></div>
+      <div class="homegrid">
+        <div class="homeview"><canvas id="homeCanvas" aria-label="Inside your home"></canvas><span class="formnote">Drag to look around</span></div>
+        <div class="homeside">
+          <div class="statgrid" id="homeStats"></div>
+          <div class="group"><h3>Wall paint · ₦15,000</h3><div class="swatches" id="paintRow"></div></div>
+          <div class="group"><h3>Furniture shop</h3><div id="furnList" class="group"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fade" id="fade"></div>
+  <div class="loading" id="loading"><div><div class="brandmark">Abuja <span>Life</span></div><div class="bar"><i></i></div><span class="formnote" id="loadingNote">Building the city…</span></div></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/data.js"></script>
+<script src="js/state.js"></script>
+<script src="js/world/kit.js"></script>
+<script src="js/world/city.js"></script>
+<script src="js/entities/character.js"></script>
+<script src="js/entities/npc.js"></script>
+<script src="js/entities/player.js"></script>
+<script src="js/systems/time.js"></script>
+<script src="js/systems/interaction.js"></script>
+<script src="js/systems/economy.js"></script>
+<script src="js/ui/hud.js"></script>
+<script src="js/ui/panels.js"></script>
+<script src="js/ui/phone.js"></script>
+<script src="js/ui/creator.js"></script>
+<script src="js/ui/home.js"></script>
+<script src="js/online.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
