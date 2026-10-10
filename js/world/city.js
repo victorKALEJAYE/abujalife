@@ -40,8 +40,19 @@
         City.grid.get(key).push(c);
       }
     }
+    return c;
   }
   City.addCollider = addCollider;
+  City.removeCollider = (c) => {
+    const cs = City.cell;
+    for (let gx = Math.floor(c.minX / cs); gx <= Math.floor(c.maxX / cs); gx++) {
+      for (let gz = Math.floor(c.minZ / cs); gz <= Math.floor(c.maxZ / cs); gz++) {
+        const list = City.grid.get(gx + ',' + gz); if (!list) continue;
+        const i = list.indexOf(c); if (i >= 0) list.splice(i, 1);
+      }
+    }
+    const j = City.colliders.indexOf(c); if (j >= 0) City.colliders.splice(j, 1);
+  };
   const bb = new T.Box3();
   function collectColliders(root) {
     root.updateMatrixWorld(true);
@@ -170,12 +181,26 @@
           else { house(g, x, z, 6.5, 6, 4, pick(walls), pick(['#b5523b', '#55606b'])); } break;
       }
     });
+    // luxury areas: palm-lined driveway, fountain and gold-trimmed plaza
+    if (d.lux) {
+      [10, 15, 20].forEach((z) => [-4.4, 4.4].forEach((x) => palm(g, x, z)));
+      [[-4.6, 0, 0.12, 9.4], [4.6, 0, 0.12, 9.4], [0, -4.6, 9.4, 0.12]].forEach(([x, z, w, dd]) => K.box(g, w, 0.08, dd, '#c9a227', x, 0.64, z).castShadow = false);
+      K.box(g, 2.2, 0.32, 2.2, '#e9e4d8', 0, 0.64, 0); K.box(g, 1.8, 0.06, 1.8, '#3fa9e0', 0, 0.96, 0).castShadow = false;
+      const col = K.box(g, 0.25, 1.1, 0.25, '#f4f0e6', 0, 0.64, 0); col.userData.noCollide = false;
+    } else if (d.budget) {
+      [[-6, -6], [6, 5], [-5.5, 6.5]].forEach(([x, z]) => K.box(g, 2.6, 0.02, 1.8, '#b89c6e', x, 0.6, z).castShadow = false);
+    }
     // street lamps on the plaza corners and along the driveway
     [[-4.4, -4.4], [4.4, -4.4], [-4.4, 4.4], [3.6, 12], [-3.6, 18]].forEach(([x, z]) => K.lamp(g, x, z));
     const sub = AL.JOBS.filter((j) => j.at === k).map((j) => j.name)[0] || '';
     const L = K.label(d.name, sub); L.position.set(0, k === 'cbd' ? 44 : 20, 0); g.add(L);
     d.group = g;
     buildVenues(g, k);
+  }
+
+  function palm(g, x, z) {
+    const t = K.mesh(K.CYL, K.mat('#8a6a3e'), g); t.scale.set(0.12, 2.6, 0.12); t.position.set(x, 0.6 + 1.3, z);
+    for (let i = 0; i < 6; i++) { const f = K.mesh(K.BOX, K.mat('#3e8e41'), g, false); f.scale.set(0.25, 0.05, 1.5); const a = (i / 6) * Math.PI * 2; f.position.set(x + Math.sin(a) * 0.6, 0.6 + 2.55, z + Math.cos(a) * 0.6); f.rotation.y = a; f.rotation.x = 0.35; f.userData.noCollide = true; }
   }
 
   /* ---------- venues: physical kiosks the player walks up to ---------- */
@@ -191,6 +216,10 @@
     AL.venuesFor(k).forEach((v) => {
       const vt = AL.VENUE_TYPES[v.type];
       const vg = new T.Group(); vg.position.set(v.x, 0.64, v.z); vg.scale.setScalar(1 / W); g.add(vg);
+      // side buildings face the plaza; everything else faces +z
+      const side = ['club', 'lounge', 'dealer', 'lender'].includes(v.type);
+      const rot = side ? (v.x < 0 ? Math.PI / 2 : -Math.PI / 2) : 0;
+      vg.rotation.y = rot;
       const { box } = K;
       switch (v.type) {
         case 'jobs': case 'food': case 'estate': case 'biz': {
@@ -253,13 +282,28 @@
           signBoard(vg, 'OFFICE', vt.color, 0, 2.2, -0.3, 2.2);
           break;
         }
+        case 'club': case 'lounge': case 'dealer': case 'lender': {
+          const look = {
+            club: ['#231a2b', '#c2185b', 'CLUB EMBER'], lounge: ['#3a3029', '#b7791f', 'SKYLINE LOUNGE'],
+            dealer: ['#e8ecef', '#34495e', 'APEX MOTORS'], lender: ['#f4efe6', '#d35400', 'QUICKCASH MFB'],
+          }[v.type];
+          const wide = v.type === 'dealer' ? 8 : 6.5, tall = v.type === 'lounge' ? 8 : 4.6;
+          box(vg, wide, tall, 3, look[0], 0, 0, -1.6);
+          box(vg, v.type === 'dealer' ? 6 : 1.8, 2.5, 0.1, v.type === 'club' ? '#4a1030' : '#7fb7d6', 0, 0, -0.05);
+          box(vg, wide + 0.4, 0.3, 1.2, look[1], 0, tall - 1.2, 0.3);
+          signBoard(vg, look[2], look[1], 0, tall - 0.4, 0.05, Math.min(5.2, wide - 0.6));
+          if (v.type === 'club') { const n = K.mesh(K.BOX, K.lampMat, vg, false); n.scale.set(wide, 0.12, 0.12); n.position.set(0, 3.2, 0.05); }
+          if (v.type === 'lounge') for (let y = 2; y < tall - 1.4; y += 1.6) box(vg, wide + 0.05, 0.1, 3.05, '#f2b33d', 0, y, -1.6);
+          if (v.type === 'dealer') { const c = K.car('#d1342f', false); c.scale.setScalar(1.15); c.position.set(-2.6, 0, 3.2); c.rotation.y = 0.5; vg.add(c); }
+          break;
+        }
         case 'bench': {
           box(vg, 1.8, 0.08, 0.5, '#8a6a3e', 0, 0.42, 0); box(vg, 1.8, 0.45, 0.07, '#8a6a3e', 0, 0.5, -0.24);
           [-0.8, 0.8].forEach((o) => box(vg, 0.08, 0.42, 0.45, '#5b3b2a', o, 0, 0));
           break;
         }
       }
-      City.venues.push({ district: k, type: v.type, mx: AL.D[k].x + v.x, mz: AL.D[k].z + v.z });
+      City.venues.push({ district: k, type: v.type, mx: AL.D[k].x + v.x, mz: AL.D[k].z + v.z, fx: Math.sin(rot), fz: Math.cos(rot) });
     });
   }
 

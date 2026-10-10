@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Abuja Life</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,7 +13,7 @@
 </head>
 <body>
 <div id="game">
-  <canvas id="scene" aria-label="Abuja Life: the 3D city. Move with WASD or the joystick, drag to look around."></canvas>
+  <canvas id="scene" aria-label="Abuja Life: the 3D city. Move with WASD, drag to look around, click things to use them."></canvas>
 
   <div class="hud" id="hud" hidden>
     <div class="hud-tl">
@@ -52,7 +52,9 @@
     <div class="activity glass" id="activity" hidden><span id="activityLabel">Working…</span><div class="track"><i id="activityFill"></i></div></div>
     <div class="tripbar glass" id="tripBar" hidden><span id="tripLabel">On the way…</span><button class="btn" type="button" id="skipTrip">Skip ride</button></div>
 
-    <div class="help glass desk-only"><kbd>W A S D</kbd> move · <kbd>Shift</kbd> run · <kbd>E</kbd> interact · <kbd>M</kbd> overview · <kbd>P</kbd> phone · drag to look</div>
+    <div class="help glass desk-only"><kbd>W A S D</kbd> move · <kbd>Shift</kbd> run · <kbd>E</kbd> / click use · <kbd>F</kbd> car · <kbd>M</kbd> map · <kbd>P</kbd> phone · <kbd>Esc</kbd> menu · drag to look</div>
+    <div class="basketchip glass" id="basketChip" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7h18l-2 12H5z"/><path d="M8 7l4-4 4 4"/></svg><span id="basketText">0 items</span><small>Pay at a checkout</small></div>
+    <div class="speedo glass" id="speedo" hidden><b id="spKmh">0</b><small>km/h</small><span id="spName">Car</span><em id="spTest">F to get out</em></div>
     <div class="joystick touch-only" id="joystick"><div class="knob" id="knob"></div></div>
 
     <div class="hud-br">
@@ -77,6 +79,12 @@
     <div class="who-line"><div class="avatar" id="dlgAvatar">M</div><div><b id="dlgName">Name</b><br><span id="dlgRole">Role</span></div><span class="heart" id="dlgHeart"></span></div>
     <p class="say" id="dlgSay"></p>
     <div class="row" id="dlgOpts"></div>
+  </div>
+
+  <div class="actcard glass" id="actCard" hidden role="dialog" aria-live="polite">
+    <div class="ac-head"><b id="acTitle">Title</b><small id="acSub"></small></div>
+    <div id="acBody"></div>
+    <div class="ac-btns" id="acBtns"></div>
   </div>
 
   <div class="journey glass" id="journey" hidden role="dialog" aria-live="polite">
@@ -146,6 +154,36 @@
     </div>
   </div>
 
+  <div class="overlay" id="workOv" hidden>
+    <div class="card workcard" role="dialog" aria-live="polite">
+      <div class="wk-head"><b id="wkTitle">WORK STARTED</b><small id="wkSub"></small></div>
+      <div id="wkPlay">
+        <p class="wk-req" id="wkReq">Get ready…</p>
+        <div class="track wk-timer"><i id="wkFill"></i></div>
+        <div class="wk-opts" id="wkOpts"></div>
+        <small class="formnote" id="wkProg"></small>
+      </div>
+      <div id="wkResult" hidden>
+        <span class="wk-label">Performance</span>
+        <b class="wk-perf" id="wkPerf">0%</b>
+        <p id="wkGrade"></p><small class="formnote" id="wkHits"></small>
+        <button class="btn primary" type="button" id="wkCollect">Collect pay</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="menuOv" hidden>
+    <div class="card menucard" role="dialog" aria-label="Paused">
+      <div class="brandmark">Abuja <span>Life</span></div>
+      <p class="formnote" id="menuStats"></p>
+      <button class="btn primary" type="button" id="menuResume">Resume</button>
+      <button class="btn" type="button" id="menuSave">Save game</button>
+      <button class="btn" type="button" id="menuPhone">Open phone</button>
+      <div class="keys"><span><kbd>W A S D</kbd> walk / drive</span><span><kbd>Shift</kbd> run</span><span><kbd>Mouse drag</kbd> look around</span><span><kbd>Wheel</kbd> zoom</span><span><kbd>Click</kbd> walk to or use things</span><span><kbd>E</kbd> interact</span><span><kbd>F</kbd> get in / out of your car</span><span><kbd>Space</kbd> handbrake</span><span><kbd>M</kbd> city map</span><span><kbd>P</kbd> phone</span><span><kbd>1–6</kbd> pick an option</span><span><kbd>Esc</kbd> back / menu</span></div>
+      <button class="btn danger" type="button" id="menuNew">Start a new life</button>
+    </div>
+  </div>
+
   <div class="fade" id="fade"></div>
   <div class="loading" id="loading"><div><div class="brandmark">Abuja <span>Life</span></div><div class="bar"><i></i></div><span class="formnote" id="loadingNote">Building the city…</span></div></div>
 </div>
@@ -154,6 +192,7 @@
 <script src="js/core.js"></script>
 <script src="js/data.js"></script>
 <script src="js/data-life.js"></script>
+<script src="js/data-places.js"></script>
 <script src="js/state.js"></script>
 <script src="js/world/kit.js"></script>
 <script src="js/world/city.js"></script>
@@ -166,6 +205,9 @@
 <script src="js/systems/economy.js"></script>
 <script src="js/systems/life.js"></script>
 <script src="js/systems/travel.js"></script>
+<script src="js/systems/credit.js"></script>
+<script src="js/systems/vehicles.js"></script>
+<script src="js/interiors/engine.js"></script>
 <script src="js/ui/hud.js"></script>
 <script src="js/ui/panels.js"></script>
 <script src="js/ui/phone.js"></script>
@@ -174,6 +216,11 @@
 <script src="js/ui/journey.js"></script>
 <script src="js/ui/creator.js"></script>
 <script src="js/ui/home.js"></script>
+<script src="js/ui/card.js"></script>
+<script src="js/ui/work.js"></script>
+<script src="js/ui/menu.js"></script>
+<script src="js/interiors/places.js"></script>
+<script src="js/interiors/home.js"></script>
 <script src="js/online.js"></script>
 <script src="js/main.js"></script>
 </body>

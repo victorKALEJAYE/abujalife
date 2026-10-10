@@ -267,3 +267,48 @@ body.touch .desk-only { display: none !important; }
 .app i { position: relative; }
 .badge-n { position: absolute; top: -5px; right: -5px; min-width: 20px; height: 20px; border-radius: 10px; background: var(--danger); color: #fff; font-style: normal; font-size: 11px; font-weight: 800; display: grid; place-items: center; padding: 0 5px; border: 2px solid #0d1512; }
 @media (max-width: 700px) { .navchip { top: calc(150px + env(safe-area-inset-top, 0px)); } }
+
+/* ---------- walk-in places: action card, basket, speedo ---------- */
+.actcard { position: absolute; left: 50%; bottom: calc(86px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(400px, calc(100% - 32px)); padding: 14px; z-index: 6; max-height: 44%; overflow: auto; box-shadow: 0 18px 40px rgba(0, 0, 0, .35); animation: pop .2s ease-out; }
+.ac-head b { display: block; font-family: var(--display); font-weight: 600; font-size: 16px; text-wrap: balance; }
+.ac-head small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.actcard .statgrid { margin-top: 10px; }
+.actcard .note { margin: 10px 0 0; }
+.ac-btns { display: grid; gap: 6px; margin-top: 12px; }
+.ac-btns .btn { display: flex; align-items: center; gap: 10px; justify-content: flex-start; text-align: left; width: 100%; }
+.ac-btns .btn span { display: flex; flex-direction: column; min-width: 0; }
+.ac-btns .btn small { font-weight: 500; font-size: 12px; opacity: .78; }
+.ac-btns kbd, .wkopt kbd, .keys kbd { font-family: var(--mono); font-size: 11.5px; min-width: 22px; text-align: center; background: var(--raise); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; color: inherit; }
+.basketchip { position: absolute; right: 16px; top: 120px; display: flex; align-items: center; gap: 8px; padding: 8px 12px; color: var(--gold); font-weight: 700; flex-wrap: wrap; max-width: 220px; }
+.basketchip small { width: 100%; color: var(--muted); font-weight: 500; font-size: 11.5px; }
+.speedo { position: absolute; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: grid; grid-template-columns: auto auto; column-gap: 6px; align-items: baseline; padding: 8px 18px; text-align: center; }
+.speedo b { font-family: var(--mono); font-size: 30px; font-variant-numeric: tabular-nums; }
+.speedo small { color: var(--muted); font-weight: 700; }
+.speedo span, .speedo em { grid-column: 1 / -1; font-size: 12px; color: var(--muted); font-style: normal; }
+.speedo em { color: var(--gold); }
+
+/* ---------- work minigame ---------- */
+.workcard { max-width: none; width: min(520px, calc(100% - 32px)); text-align: center; }
+.wk-head b { display: block; font-family: var(--display); font-weight: 800; font-size: 22px; letter-spacing: .04em; color: var(--accent); }
+.wk-head small { color: var(--muted); }
+.wk-req { font-size: 19px; font-weight: 600; min-height: 56px; margin: 18px 0 10px; text-wrap: balance; }
+.wk-timer { height: 9px; margin-bottom: 16px; }
+.wk-timer i { transition: none; background: var(--gold); }
+.wk-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.wkopt { display: flex; gap: 10px; align-items: center; justify-content: center; padding: 14px 10px; font-size: 15px; }
+.wkopt.ok { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.wkopt.bad { background: var(--danger); color: #fff; border-color: transparent; }
+.wk-label { display: block; margin-top: 18px; text-transform: uppercase; letter-spacing: .12em; font-size: 12px; color: var(--muted); font-weight: 700; }
+.wk-perf { display: block; font-family: var(--display); font-size: 64px; font-weight: 800; color: var(--gold); line-height: 1.1; }
+#wkResult .btn { margin-top: 14px; min-width: 200px; }
+
+/* ---------- pause menu ---------- */
+.menucard { max-width: none; width: min(460px, calc(100% - 32px)); display: grid; gap: 8px; text-align: center; }
+.menucard .brandmark { margin-bottom: 2px; }
+.keys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; text-align: left; font-size: 12.5px; color: var(--muted); padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 6px 0; }
+.keys kbd { color: var(--text); margin-right: 4px; }
+.btn.danger { color: var(--danger); }
+body.inside .navchip { opacity: .7; }
+@media (max-width: 560px) { .keys { grid-template-columns: 1fr; } .help { display: none; } }
+
+@media (min-width: 900px) { .actcard { left: auto; right: 16px; transform: none; bottom: 90px; max-height: calc(100% - 260px); } }

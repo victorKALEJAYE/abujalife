@@ -21,7 +21,7 @@
     id: 'transport', name: 'Rides', order: 2, color: '#111827',
     icon: ic('<path d="M5 17h14l-1.5-6.5A2 2 0 0 0 15.6 9H8.4a2 2 0 0 0-1.9 1.5L5 17zM5 17v2M19 17v2M7.5 14h.01M16.5 14h.01"/>'),
     render(body) {
-      const here = AL.City.districtAt(AL.Player.pos.x, AL.Player.pos.z).key;
+      const here = AL.City.districtAt(AL.Player.mapPos().x, AL.Player.mapPos().z).key;
       const tr = AL.Sim.trafficAt(here);
       body.appendChild(el('div', 'bigq', 'Where are you going?'));
       body.appendChild(note('Traffic near you: ' + tr.level.toLowerCase() + ', about ' + tr.kmh + ' km/h. Rides pick you up where you stand.'));
@@ -153,7 +153,7 @@
       const S = AL.S, c = AL.Life.career();
       if (c) {
         body.appendChild(h3('Your job'));
-        body.appendChild(stats([['Role', c.title], ['Employer', c.employer], ['Pay', fmt(AL.Life.careerPay(c, S.career.lvl)) + '/shift'], ['Level', String(S.career.lvl)], ['Shifts', AL.Life.shiftText(c)], ['Days', AL.Life.daysText(c)], ['Shifts worked', String(S.career.shifts)], ['Next promotion', (10 - (S.career.shifts % 10)) + ' shifts']]));
+        body.appendChild(stats([['Role', c.title], ['Employer', c.employer], ['Salary', fmt(AL.Life.monthly(c, S.career.lvl)) + '/month'], ['Per shift', fmt(AL.Life.careerPay(c, S.career.lvl))], ['Performance', S.career.perf ? S.career.perf + '%' : '—'], ['Level', String(S.career.lvl)], ['Shifts', AL.Life.shiftText(c)], ['Days', AL.Life.daysText(c)], ['Shifts worked', String(S.career.shifts)], ['Next promotion', (10 - (S.career.shifts % 10)) + ' shifts']]));
         const ok = AL.Life.canWork(c);
         body.appendChild(note(ok === true ? 'You can start a shift now. Go to ' + c.employer + ' in ' + AL.D[c.at].name + '.' : ok));
         const w = AL.Sim.locations.find((l) => l.district === c.at && l.type === c.venue);
@@ -164,7 +164,7 @@
       AL.CAREERS.forEach((x) => {
         if (c && c.id === x.id) return;
         const locked = S.xp < x.req;
-        body.appendChild(mk(x.title + ' · ' + x.employer, (locked ? 'Needs ' + x.req + ' points · ' : '') + AL.D[x.at].name + ' · ' + AL.Life.shiftText(x) + ', ' + AL.Life.daysText(x), fmt(x.pay) + '/shift', 'pay', () => AL.Life.apply(x), locked));
+        body.appendChild(mk(x.title + ' · ' + x.employer, (locked ? 'Needs ' + x.req + ' points · ' : '') + AL.D[x.at].name + ' · ' + AL.Life.shiftText(x) + ', ' + AL.Life.daysText(x), fmt(AL.Life.monthly(x, 1)) + '/mo', 'pay', () => AL.Life.apply(x), locked));
       });
       body.appendChild(h3('Day jobs (cash, no contract)'));
       AL.JOBS.slice().sort((a, b) => a.req - b.req).forEach((j) => {
@@ -226,7 +226,7 @@
       const S = AL.S, r = AL.residence(), c = AL.Life.career();
       body.appendChild(stats([
         ['Name', AL.cleanName(S.name)], ['Age', String(S.age)], ['Home', r ? r.name + ', ' + AL.D[r.at].name : 'None'], ['Vehicle', 'None yet'],
-        ['Job', c ? c.title : 'Day jobs'], ['Salary', c ? fmt(AL.Life.careerPay(c, S.career.lvl)) + '/shift' : '—'],
+        ['Job', c ? c.title : 'Day jobs'], ['Salary', c ? fmt(AL.Life.monthly(c, S.career.lvl)) + '/month' : '—'],
         ['Cash', fmt(S.cash)], ['Bank', fmt(S.savings)], ['Net worth', fmt(AL.worth())], ['Credit score', String(S.credit)],
         ['Health', Math.round(S.health) + ' / 100'], ['Energy', Math.round(S.energy) + ' / 100'], ['Happiness', Math.round(S.happy) + ' / 100'], ['Hustle points', String(S.xp)],
         ['Friends', String(Object.values(S.rel).filter((x) => x.f >= 50).length)], ['Landmarks', S.visited.length + ' / ' + AL.LANDMARKS.length],

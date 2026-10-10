@@ -11,19 +11,18 @@
   /* play an activity animation for a few seconds (work, eat, …) */
   function act(anim, secs, label) { AL.emit('activity', { anim, secs, label }); }
 
-  E.work = (j) => {
+  E.work = (j, perf) => {
     const s = S();
     if (AL.busy) return;
     if (!AL.isOpen(j.hours)) return AL.toast(j.name + ' shifts run ' + AL.hoursText(j.hours).replace('Open ', '') + '.');
     if (s.xp < j.req) return AL.toast('You need ' + j.req + ' hustle points for this job.');
     if (s.energy < j.en) return AL.toast('Too tired. Eat something or sleep.');
-    const gross = AL.payFor(j), tax = Math.round(gross * AL.TAX_RATE), p = gross - tax;
+    const gross = Math.round(AL.payFor(j) * (AL.Work ? AL.Work.pay(perf) : 1)), tax = Math.round(gross * AL.TAX_RATE), p = gross - tax;
     s.cash += p; s.taxPaid += tax; s.energy -= j.en; s.t += j.hrs; s.xp += 1;
     s.jobXp[j.id] = (s.jobXp[j.id] || 0) + 1;
     AL.log('Worked as ' + j.name.toLowerCase() + '. Earned ' + fmt(gross) + ', paid ' + fmt(tax) + ' income tax.');
     if (s.jobXp[j.id] % 5 === 0 && s.jobXp[j.id] <= 20) AL.log('Your boss noticed. Pay as ' + j.name.toLowerCase() + ' went up.');
-    act(j.anim || 'work', 2.6, 'Working ' + j.hrs + ' hours as ' + j.name.toLowerCase() + '…');
-    AL.toast('+' + fmt(p) + ' after tax', 'money');
+    AL.toast((perf != null ? 'Performance ' + Math.round(perf * 100) + '% · ' : '') + '+' + fmt(p) + ' after tax', 'money');
     AL.commit();
   };
   E.eat = (f) => {

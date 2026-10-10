@@ -43,7 +43,10 @@
     $('hDay').textContent = 'Day ' + AL.day() + ' · ' + PHASE_NAME[ph];
     if (ph !== lastPhase) { $('hPhaseIcon').innerHTML = ICONS[ph]; lastPhase = ph; }
     const d = AL.Player && AL.Player.lastDistrict;
-    $('hPlace').textContent = d ? AL.D[d].name : (AL.Player && AL.Player.trip ? 'On the road' : 'Abuja');
+    const inn = AL.Interior && AL.Interior.active;
+    const loc = inn && AL.Sim.locations.find((l) => l.venueIndex === inn.venue.index);
+    if (inn) $('hPlace').textContent = (loc ? loc.name : inn.venue.type === 'home' ? 'Home' : 'Inside') + ' · ' + AL.D[inn.venue.district].name;
+    else $('hPlace').textContent = d ? AL.D[d].name + (AL.D[d].lux ? ' · luxury' : '') : (AL.Player && AL.Player.trip ? 'On the road' : 'Abuja');
     const pt = $('phTime'); if (pt) pt.textContent = AL.clock();
   };
   AL.on('change', HUD.render);
@@ -55,7 +58,17 @@
     $('banner').classList.add('show'); clearTimeout(bannerT);
     bannerT = setTimeout(() => $('banner').classList.remove('show'), 2600);
   }
-  AL.on('district', (k) => { if (k) banner(AL.D[k].name, AL.D[k].tag); HUD.render(); });
+  AL.on('district', (k) => { if (k) banner(AL.D[k].name, (AL.D[k].lux ? 'Luxury area · ' : AL.D[k].budget ? 'Affordable area · ' : '') + AL.D[k].tag); HUD.render(); });
+  AL.on('interior', (ctx) => {
+    document.body.classList.toggle('inside', !!ctx);
+    if (ctx) { const loc = AL.Sim.locations.find((l) => l.venueIndex === ctx.venue.index); const r = AL.residence(); banner(loc ? loc.name : (r ? 'My ' + r.name.toLowerCase() : 'Home'), 'Walk around · click or press E to use things · Exit by the door'); }
+    HUD.render();
+  });
+  /* driving: speed and car name */
+  AL.on('vehicle', (car) => {
+    $('speedo').hidden = !car;
+    if (car) $('spName').textContent = AL.Vehicles.model(car.rec.model).name + (car.rec.test ? ' · test drive' : '');
+  });
   AL.on('phase', (ph) => {
     const msg = { morning: 'Good morning, Abuja. Banks and offices open soon.', afternoon: 'Afternoon. The city is busy.', evening: 'Evening. Offices are closing and the suya spots are lighting up.', night: 'Night has fallen. Most places are closed; get home safe.' }[ph];
     AL.toast(msg);
@@ -68,7 +81,7 @@
     const el = $('prompt');
     if (!it || AL.busy) { el.hidden = true; return; }
     const ok = it.enabled ? it.enabled() : true;
-    $('promptKey').textContent = AL.TOUCH ? 'TAP' : 'E';
+    $('promptKey').textContent = document.body.classList.contains('touch') ? 'TAP' : 'E';
     $('promptVerb').textContent = typeof it.verb === 'function' ? it.verb() : it.verb;
     const title = it.title ? it.title() : '';
     const sub = ok === true ? (it.sub ? it.sub() : '') : ok;
@@ -90,6 +103,7 @@
   AL.on('fade-in', () => { $('fade').classList.add('on'); });
 
   HUD.tick = (t) => {
+    if (AL.Vehicles && AL.Vehicles.driving) { $('spKmh').textContent = AL.Vehicles.kmh(); const c = AL.Vehicles.driving; $('spTest').textContent = c.rec.test ? Math.max(0, Math.ceil(c.testLeft)) + 's left' : 'F to get out'; }
     if (act) { const p = 1 - Math.max(0, act.left) / (act.total || 1); $('activityFill').style.width = Math.round(p * 100) + '%'; }
     const n = AL.Travel && AL.Travel.Nav.tick(t || 0);
     const chip = $('navChip');
@@ -103,7 +117,9 @@
 
   /* ---- buttons and touch controls ---- */
   HUD.bind = () => {
-    if (AL.TOUCH) document.body.classList.add('touch');
+    // laptop first: on-screen sticks only on touch-only devices
+    const touchOnly = AL.TOUCH && !(window.matchMedia && window.matchMedia('(any-pointer: fine)').matches);
+    if (touchOnly) document.body.classList.add('touch');
     $('prompt').addEventListener('click', () => AL.Interact.use());
     $('prompt').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); AL.Interact.use(); } });
     $('useBtn').addEventListener('click', () => AL.Interact.use());

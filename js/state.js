@@ -17,6 +17,8 @@
     career: null,          // { id, lvl, shifts, lastShift, hired }
     inv: {}, items: [], wardrobe: ['tshirt'], deliveries: [],
     msgs: [], tx: [], loan: null, portfolio: {}, market: null, nav: null, lastDay: 1,
+    // walk-in places (v5)
+    loans: [], cars: [], vip: null,
   });
 
   function cleanBiz(b) {
@@ -62,6 +64,9 @@
     ['items', 'wardrobe', 'deliveries', 'msgs', 'tx'].forEach((k) => { if (!Array.isArray(s[k])) s[k] = []; });
     if (!s.wardrobe.includes(s.look.outfit)) s.wardrobe.push(s.look.outfit);
     if (s.loan && !(Number(s.loan.bal) > 0)) s.loan = null;
+    s.loans = Array.isArray(s.loans) ? s.loans.filter((l) => l && AL.LENDERS[l.lender] && Number(l.bal) > 0) : [];
+    s.cars = Array.isArray(s.cars) ? s.cars.filter((c) => c && AL.CARS.some((m) => m.id === c.model) && isFinite(c.x) && isFinite(c.z)) : [];
+    s.cars.forEach((c, i) => { c.id = c.id || 'car' + i + '-' + Date.now(); c.rot = Number(c.rot) || 0; });
     return s;
   }
   function load() { try { const v = localStorage.getItem(SAVE_KEY); return v ? JSON.parse(v) : null; } catch (e) { return null; } }

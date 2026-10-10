@@ -27,9 +27,13 @@
     invest: () => 'Abuja Securities House',
     clinic: () => 'Garki General Hospital',
     work: (k) => AL.WORK_PLACES[k] || D[k].name + ' Offices',
+    club: () => AL.NIGHT.club.name,
+    lounge: () => AL.NIGHT.lounge.name,
+    dealer: () => 'Apex Motors · Jabi',
+    lender: (k) => 'QuickCash Microfinance · ' + D[k].name,
   };
-  const STAFF = { jobs: [2, 4], food: [3, 9], estate: [3, 6], biz: [2, 5], bank: [28, 40], atm: [0, 0], taxi: [8, 20], park: [10, 30], shop: [40, 160], invest: [12, 25], clinic: [60, 140], work: [80, 300] };
-  const SPEND = { food: 2500, shop: 18000, bank: 0, clinic: 9000, park: 400, taxi: 1500, invest: 0, work: 0, estate: 0, biz: 0, jobs: 0, atm: 0 };
+  const STAFF = { jobs: [2, 4], food: [3, 9], estate: [3, 6], biz: [2, 5], bank: [28, 40], atm: [0, 0], taxi: [8, 20], park: [10, 30], shop: [40, 160], invest: [12, 25], clinic: [60, 140], work: [80, 300], club: [18, 30], lounge: [12, 20], dealer: [8, 14], lender: [4, 8] };
+  const SPEND = { food: 2500, shop: 18000, bank: 0, clinic: 9000, park: 400, taxi: 1500, invest: 0, work: 0, estate: 0, biz: 0, jobs: 0, atm: 0, club: 30000, lounge: 22000, dealer: 0, lender: 0 };
   Sim.buildLocations = () => {
     Sim.locations = []; Sim.byId = {};
     AL.City.venues.forEach((v, i) => {
@@ -39,7 +43,7 @@
         id: 'v' + i, venueIndex: i, type: v.type, district: v.district, cat: AL.VENUE_CATEGORY[v.type] || 'businesses',
         name: VENUE_NAMES[v.type] ? VENUE_NAMES[v.type](v.district) : vt.verb, mx: v.mx, mz: v.mz,
         // arrive a few metres in front of the kiosk/door
-        ax: v.mx, az: v.mz + 1.3, hours: vt.hours,
+        ax: v.mx + (v.fx || 0) * 1.3, az: v.mz + (v.fz === undefined ? 1 : v.fz) * 1.3, hours: vt.hours,
       };
       add(loc);
     });

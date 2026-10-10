@@ -102,6 +102,6 @@
     ['healthcare', 'Health', '#c0392b'], ['religion', 'Religion', '#6aa0d8'], ['investments', 'Invest', '#1d6fa5'],
     ['businesses', 'Business', '#9b59b6'], ['landmarks', 'Landmarks', '#b7791f'],
   ];
-  AL.VENUE_CATEGORY = { jobs: 'jobs', food: 'food', estate: 'homes', biz: 'businesses', bank: 'banks', atm: 'banks', taxi: 'transport', park: 'transport', shop: 'shopping', invest: 'investments', clinic: 'healthcare', work: 'jobs' };
+  AL.VENUE_CATEGORY = { jobs: 'jobs', food: 'food', estate: 'homes', biz: 'businesses', bank: 'banks', atm: 'banks', taxi: 'transport', park: 'transport', shop: 'shopping', invest: 'investments', clinic: 'healthcare', work: 'jobs', club: 'entertainment', lounge: 'entertainment', dealer: 'shopping', lender: 'banks' };
   AL.LANDMARK_CATEGORY = { mosque: 'religion', ecwa: 'religion', airport: 'transport', stadium: 'entertainment', millennium: 'entertainment', jabilake: 'entertainment' };
 })(window.AL);

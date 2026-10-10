@@ -101,19 +101,23 @@
     if (s.energy < c.en) return 'Too tired for a shift. Eat or sleep first.';
     return true;
   };
-  L.workShift = () => {
+  /* monthly salary framing: about four working weeks */
+  L.monthly = (c, lvl) => L.careerPay(c, lvl) * c.days.length * 4;
+  L.workShift = (perf) => {
     const s = S(), c = L.career(); if (!c) return;
     const ok = L.canWork(c); if (ok !== true) return AL.toast(ok);
     const h = AL.hour(), end = c.end > 24 && h < c.start ? c.end - 24 : c.end;
     const hrs = Math.max(1, end - h), frac = Math.min(1, hrs / (c.end - c.start));
-    const pay = Math.round(L.careerPay(c, s.career.lvl) * frac);
+    const k = AL.Work ? AL.Work.pay(perf) : 1;
+    const pay = Math.round(L.careerPay(c, s.career.lvl) * frac * k);
+    if (perf != null) { s.career.perf = Math.round(((s.career.perf || perf * 100) * 0.7) + perf * 30); if (perf >= 0.9) L.mood(4); }
     s.t += hrs; s.energy = Math.max(0, s.energy - c.en * frac); s.xp += 1;
     s.career.shifts += 1; s.career.lastShift = AL.day();
     L.credit(pay, 'Salary: ' + c.employer);
     AL.msg('Capital Trust Bank', 'Credit alert: ' + fmt(pay) + ' salary from ' + c.employer + '. Balance ' + fmt(s.savings) + '.', 'bank');
-    AL.log('Worked a ' + Math.round(hrs) + '-hour shift as ' + c.title.toLowerCase() + '. Salary ' + fmt(pay) + ' paid to your bank.');
+    AL.log('Worked a ' + Math.round(hrs) + '-hour shift as ' + c.title.toLowerCase() + (perf != null ? ' (performance ' + Math.round(perf * 100) + '%)' : '') + '. Pay ' + fmt(pay) + ' paid to your bank.');
+    AL.toast('Performance ' + (perf != null ? Math.round(perf * 100) + '% · ' : '') + fmt(pay) + ' credited to your bank', 'money');
     if (s.career.shifts % 10 === 0) { s.career.lvl += 1; AL.msg(c.employer, 'You have been promoted to level ' + s.career.lvl + '. Your pay is now ' + fmt(L.careerPay(c, s.career.lvl)) + ' a shift.', 'job'); L.mood(10); }
-    AL.emit('activity', { anim: c.venue === 'clinic' || c.id === 'security' ? 'work' : 'interact', secs: 3, label: 'Working your shift at ' + c.employer + '…' });
     AL.commit();
   };
 
@@ -165,9 +169,11 @@
     AL.log((online ? 'Ordered ' : 'Bought ') + item.name.toLowerCase() + ' for ' + fmt(total) + '.');
     AL.commit();
   };
+  L.receive = (item) => receive(item);
   function receive(item) {
     const s = S();
     if (item.outfit) { if (!s.wardrobe.includes(item.outfit)) s.wardrobe.push(item.outfit); }
+    else if (item.acc) { if (!s.items.includes(item.id)) s.items.push(item.id); L.equip(item.id, true); }
     else if (item.uses) { s.inv[item.id] = (s.inv[item.id] || 0) + item.uses; }
     else { s.items.push(item.id); }
     if (item.joy) L.mood(item.joy);
@@ -185,6 +191,14 @@
     s.energy = Math.min(100, s.energy + it.food); s.t += 0.5; L.mood(2);
     AL.log('Cooked and ate ' + it.name.toLowerCase() + ' at home (+' + it.food + ' energy).'); AL.commit();
   };
+  /* accessories: one per slot, shown on the character */
+  L.equip = (id, on) => {
+    const s = S(), d = AL.ACC[id]; if (!d || !s.items.includes(id)) return;
+    const acc = (s.look.acc || []).filter((x) => x !== id && (AL.ACC[x] || {}).slot !== d.slot);
+    if (on) acc.push(id);
+    s.look = AL.cleanLook({ ...s.look, acc }); AL.Player.rebuild(); AL.commit();
+  };
+  L.wearing = (id) => (S().look.acc || []).includes(id);
   L.wear = (outfit, color) => {
     const s = S(); if (!s.wardrobe.includes(outfit)) return;
     s.look = AL.cleanLook({ ...s.look, outfit, color: color || s.look.color });

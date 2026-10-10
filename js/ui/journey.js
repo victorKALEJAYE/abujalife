@@ -22,7 +22,7 @@
   AL.on('journey', async ({ loc, mode, q }) => {
     const T = AL.Travel, M = T.MODES[mode];
     AL.busy = true; AL.$('sheet').hidden = true;
-    const from = AL.D[AL.City.districtAt(AL.Player.pos.x, AL.Player.pos.z).key].name;
+    const from = AL.D[AL.City.districtAt(AL.Player.mapPos().x, AL.Player.mapPos().z).key].name;
     const title = (mode === 'ride' ? 'Ride' : M.name) + ' to ' + loc.name;
     const info = from + ' → ' + AL.D[loc.district].name + ' · ' + T.fmtKm(q.km) + ' · ' + T.fmtMin(q.mins) + ' · arrive ' + q.arrive + ' · ' + AL.fmt(q.cost) + ' paid';
     if (mode === 'ride') {

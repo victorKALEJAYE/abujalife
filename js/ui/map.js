@@ -27,7 +27,7 @@
     ctx.fillStyle = '#3f9fd8'; ctx.beginPath(); ctx.ellipse(X(24), Z(-128), 22 * z, 15 * z, 0, 0, 7); ctx.fill();
     // nav route
     const nav = AL.S.nav && AL.Sim.get(AL.S.nav);
-    const P = AL.Player.pos, pmx = P.x / AL.W, pmz = P.z / AL.W;
+    const P = AL.Player.mapPos(), pmx = P.x / AL.W, pmz = P.z / AL.W;
     if (nav) {
       const A = AL.D[AL.City.districtAt(P.x, P.z).key], B = AL.D[nav.district];
       const pts = [[pmx, pmz], [A.x + 1.5, A.z + 20.8], [A.x + 20.8, A.z + 20.8], [A.x + 20.8, B.z + 20.8], [B.x + 1.5, B.z + 20.8], [nav.ax, nav.az]];
@@ -71,14 +71,14 @@
   }
 
   function render(body) {
-    if (M.cx === null) { M.cx = AL.Player.pos.x / AL.W; M.cz = AL.Player.pos.z / AL.W; M.zoom = 2.6; }
+    if (M.cx === null) { M.cx = AL.Player.mapPos().x / AL.W; M.cz = AL.Player.mapPos().z / AL.W; M.zoom = 2.6; }
     const wrap = el('div', 'mapwrap'); body.appendChild(wrap);
     const cv = el('canvas', 'minimap'); cv.width = 640; cv.height = 420; wrap.appendChild(cv);
     const ctrls = el('div', 'mapctrl'); wrap.appendChild(ctrls);
     const btn = (label, aria, fn) => { const b = el('button', 'mapbtn', label); b.type = 'button'; b.setAttribute('aria-label', aria); b.onclick = fn; ctrls.appendChild(b); };
     btn('+', 'Zoom in', () => { M.zoom = AL.clamp(M.zoom * 1.4, 0.7, 9); draw(cv); });
     btn('−', 'Zoom out', () => { M.zoom = AL.clamp(M.zoom / 1.4, 0.7, 9); draw(cv); });
-    btn('◎', 'Centre on me', () => { M.cx = AL.Player.pos.x / AL.W; M.cz = AL.Player.pos.z / AL.W; M.zoom = Math.max(M.zoom, 2.4); draw(cv); });
+    btn('◎', 'Centre on me', () => { M.cx = AL.Player.mapPos().x / AL.W; M.cz = AL.Player.mapPos().z / AL.W; M.zoom = Math.max(M.zoom, 2.4); draw(cv); });
     btn('H', 'My home', () => { const h = AL.Sim.homeLocation(); if (!h) return AL.toast('You have no home. Visit an estate agent.'); select(h.id, true); });
     bindCanvas(cv);
     const search = el('input', 'mapsearch'); search.type = 'search'; search.placeholder = 'Search places, e.g. bank, suya, Jabi'; search.value = M.q; search.setAttribute('aria-label', 'Search places');

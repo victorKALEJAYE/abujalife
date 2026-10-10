@@ -116,7 +116,14 @@
       color: OUTFIT_COLORS.includes(l.color) ? l.color : DEFAULT_LOOK.color,
       frame: FRAMES.some((f) => f[0] === l.frame) ? l.frame : (l.outfit === 'ankara' || l.hair === 'gele' ? 'f' : 'm'),
       body: BODIES.some((b) => b[0] === l.body) ? l.body : DEFAULT_LOOK.body,
+      acc: cleanAcc(l.acc),
     };
+  }
+  /* accessories: known ids only, one per slot */
+  function cleanAcc(a) {
+    const out = [], slots = {};
+    (Array.isArray(a) ? a : []).forEach((id) => { const d = AL.ACC && AL.ACC[id]; if (d && !slots[d.slot]) { slots[d.slot] = 1; out.push(id); } });
+    return out;
   }
 
   /* ---- venues: interactive spots placed on each district plaza (map units, relative to district centre) ---- */
@@ -136,11 +143,17 @@
     clinic: { verb: 'Enter hospital', sign: 'HOSPITAL', color: '#c0392b', hours: null },
     work: { verb: 'Enter office', sign: 'OFFICE', color: '#3d4f63', hours: [7, 20] },
     worship: { verb: 'Visit', sign: 'FAITH', color: '#6aa0d8', hours: [5, 21] },
+    club: { verb: 'Go to the club', sign: 'CLUB', color: '#c2185b', hours: [21, 28] },
+    lounge: { verb: 'Go up to the lounge', sign: 'LOUNGE', color: '#b7791f', hours: [17, 26] },
+    dealer: { verb: 'Enter showroom', sign: 'MOTORS', color: '#34495e', hours: [8, 19] },
+    lender: { verb: 'Enter loan office', sign: 'LOANS', color: '#d35400', hours: [8, 18] },
   };
   const VENUE_SPOTS = {
     taxi: [2.6, 8.5], jobs: [-3.2, -3.0], food: [3.2, -3.0], estate: [-3.2, 3.0], biz: [3.2, 3.0],
     bank: [0, -3.6], atm: [1.4, -3.6], home: [0, -6.4], park: [-1.6, 6.2], bench: [-2.2, 0.3],
     shop: [-3.4, -6.3], invest: [3.4, -6.3], clinic: [3.6, 6.2], work: [2.4, 0.3],
+    // side buildings on the plaza edge, facing the plaza
+    club: [-6.6, -0.6], lounge: [-6.6, 3.6], dealer: [6.6, -0.6], lender: [6.6, 3.6],
   };
   function venuesFor(k) {
     const list = [{ type: 'taxi' }];
@@ -151,7 +164,11 @@
     if (k === 'cbd') list.push({ type: 'bank' });
     if (k === 'cbd' || k === 'wuse' || k === 'jabi' || k === 'garki') list.push({ type: 'atm' });
     if (k === 'garki') list.push({ type: 'park' });
-    if (k === 'jabi' || k === 'wuse' || k === 'gwarinpa') list.push({ type: 'shop' });
+    if (AL.STORES && AL.STORES[k]) list.push({ type: 'shop' });
+    if (k === 'wuse') list.push({ type: 'club' });
+    if (k === 'maitama') list.push({ type: 'lounge' });
+    if (k === 'jabi') list.push({ type: 'dealer' });
+    if (k === 'garki' || k === 'nyanya') list.push({ type: 'lender' });
     if (k === 'cbd') list.push({ type: 'invest' });
     if (k === 'garki') list.push({ type: 'clinic' });
     if (k === 'cbd' || k === 'jabi' || k === 'maitama') list.push({ type: 'work' });

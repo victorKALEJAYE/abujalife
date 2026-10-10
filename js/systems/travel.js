@@ -13,7 +13,7 @@
     taxi: { name: 'Taxi', base: 300, perKm: 280, wait: 2, fromPark: true, note: 'From a taxi & bus park' },
     ride: { name: 'Ride-hailing', base: 500, perKm: 340, wait: 5, app: true, note: 'Picks you up where you stand' },
   };
-  const here = () => ({ mx: AL.Player.pos.x / AL.W, mz: AL.Player.pos.z / AL.W });
+  const here = () => ({ mx: AL.Player.mapPos().x / AL.W, mz: AL.Player.mapPos().z / AL.W });
   Travel.km = (a, b) => (Math.abs(a.mx - b.mx) + Math.abs(a.mz - b.mz)) * 1.1 * AL.KM_PER_UNIT;
   Travel.kmTo = (loc) => Travel.km(here(), { mx: loc.ax, mz: loc.az });
   Travel.fmtKm = (km) => (km < 1 ? Math.max(50, Math.round(km * 1000 / 50) * 50) + ' m' : km.toFixed(1) + ' km');
@@ -22,7 +22,7 @@
   Travel.quote = (loc, mode) => {
     const M = Travel.MODES[mode];
     const km = Travel.kmTo(loc);
-    const fromK = AL.City.districtAt(AL.Player.pos.x, AL.Player.pos.z).key;
+    const fromK = AL.City.districtAt(AL.Player.mapPos().x, AL.Player.mapPos().z).key;
     const traffic = [AL.Sim.trafficAt(fromK), AL.Sim.trafficAt(loc.district)];
     const kmh = M.kmh || (traffic[0].kmh + traffic[1].kmh) / 2;
     const surge = mode === 'ride' && (traffic[0].level === 'Heavy' || traffic[1].level === 'Heavy') ? 1.25 : 1;
@@ -30,7 +30,7 @@
     const mins = (km / kmh) * 60 + (M.wait || 0);
     return { mode, km, mins, cost, surge: surge > 1, traffic: traffic[1], arrive: Travel.arriveAt(mins) };
   };
-  Travel.atPark = () => AL.City.venues.some((v) => (v.type === 'taxi' || v.type === 'park') && Math.hypot(v.mx * AL.W - AL.Player.pos.x, v.mz * AL.W - AL.Player.pos.z) < 30);
+  Travel.atPark = () => AL.City.venues.some((v) => (v.type === 'taxi' || v.type === 'park') && Math.hypot(v.mx * AL.W - AL.Player.mapPos().x, v.mz * AL.W - AL.Player.mapPos().z) < 30);
 
   /* ---------- navigation (directions) ---------- */
   const Nav = { beacon: null };
@@ -60,7 +60,7 @@
   };
   Nav.tick = (t) => {
     const loc = AL.S.nav && AL.Sim.get(AL.S.nav); if (!loc) return null;
-    const p = AL.Sim.arrivalWorld(loc), P = AL.Player.pos;
+    const p = AL.Sim.arrivalWorld(loc), P = AL.Player.mapPos();
     const d = Math.hypot(p.x - P.x, p.z - P.z);
     if (d < 7) { Nav.clear(true); return null; }
     if (Nav.beacon) { const s = 1 + Math.sin(t * 3) * 0.12; Nav.beacon.userData.ring.scale.set(s, s, s); }
@@ -82,6 +82,8 @@
     if (!how) return AL.toast('This ' + M.name.toLowerCase() + ' costs ' + fmt(q.cost) + '. You do not have enough.');
     AL.log('Booked a ' + M.name.toLowerCase() + ' to ' + loc.name + ' for ' + fmt(q.cost) + ' (' + Travel.fmtKm(q.km) + ', ' + Travel.fmtMin(q.mins) + ').');
     AL.commit();
+    if (AL.Interior.active) AL.Interior.exit();
+    if (AL.Vehicles.driving) AL.Vehicles.exit();
     AL.emit('journey', { loc, mode, q });
   };
   /* called by the journey UI once the player chooses to watch or skip */

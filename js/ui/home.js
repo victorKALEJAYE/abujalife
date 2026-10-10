@@ -34,6 +34,7 @@
   }
   H.open = () => {
     if (!AL.residence()) return AL.toast('You have no home. Rent one at an estate agent.');
+    AL.Card && AL.Card.hide();
     $('homeOv').hidden = false; render();
     if (!T) return;
     try {

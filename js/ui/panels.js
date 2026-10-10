@@ -8,7 +8,7 @@
   const UI = { openVenue: null, talkingTo: null };
   const fmt = AL.fmt;
 
-  UI.modalOpen = () => !$('startOv').hidden || !$('bizOv').hidden || !$('homeOv').hidden || !$('dialog').hidden;
+  UI.modalOpen = () => !$('startOv').hidden || !$('bizOv').hidden || !$('homeOv').hidden || !$('dialog').hidden || !$('workOv').hidden || !$('menuOv').hidden;
 
   /* ---- generic action button ---- */
   function mk(main, sub, right, cls, fn, dis) {
@@ -47,7 +47,7 @@
       AL.JOBS.filter((j) => j.at === v.district).forEach((j) => {
         const locked = S.xp < j.req, open = AL.isOpen(j.hours);
         const sub = locked ? 'Needs ' + j.req + ' hustle points' : (!open ? 'Shifts ' + AL.hoursText(j.hours).replace('Open ', '') : j.hrs + ' hrs · −' + j.en + ' energy' + (S.jobXp[j.id] ? ' · ' + S.jobXp[j.id] + ' shifts done' : ''));
-        body.appendChild(mk(j.name, sub, '+' + fmt(AL.payFor(j)), 'pay', () => { closeSheet(); AL.Econ.work(j); }, locked || !open));
+        body.appendChild(mk(j.name, sub, '+' + fmt(AL.payFor(j)), 'pay', () => { closeSheet(); AL.Work.gig(j); }, locked || !open));
       });
       body.appendChild(note('Every shift earns a hustle point. More points unlock better jobs across Abuja. 10% income tax goes to the FCT treasury.'));
     },
@@ -141,7 +141,29 @@
       body.appendChild(mk('Sleep here till morning', 'Pay up to ₦300 to the park boys', '₦300', 'cost', () => { closeSheet(); AL.Econ.sleep({ park: true }); }));
     },
   };
-  const VENUE_TITLES = { taxi: 'Taxi & bus park', jobs: 'Job post', food: 'Food spot', estate: 'Estate agent', biz: 'Business office', bank: 'Capital Trust Bank', atm: 'ATM', park: 'Area 1 motor park', shop: 'Shops', invest: 'Abuja Securities House', clinic: 'Garki General Hospital', work: 'Offices', worship: 'Place of worship' };
+  /* nightlife door: pick a ticket, then walk in */
+  function entryCard(v) {
+    const N = AL.NIGHT[v.type];
+    const go = (vip) => {
+      const price = vip ? N.vip : N.regular;
+      if (!AL.Life.pay(price, N.name + (vip ? ' VIP entry' : ' entry'))) return AL.toast('Entry is ' + fmt(price) + '.');
+      AL.Interior.enter(v); AL.Interior.vip = vip;
+      AL.toast(vip ? 'VIP wristband on. Bottle service and the VIP section are yours tonight.' : 'You are in. Enjoy the night!', 'good');
+      AL.commit();
+    };
+    AL.Card.show({
+      title: N.name, sub: AL.hoursText(N.hours) + ' · dress to impress',
+      lines: [['Regular entry', fmt(N.regular)], ['VIP entry', fmt(N.vip)], ['Cash on you', fmt(AL.S.cash)], ['Bank', fmt(AL.S.savings)]],
+      note: 'VIP gets you into the VIP section and bottle service.',
+      actions: [
+        { label: 'Regular entry', sub: fmt(N.regular), primary: true, fn: () => go(false) },
+        { label: 'VIP entry', sub: fmt(N.vip), fn: () => go(true) },
+        { label: 'Not tonight' },
+      ],
+    });
+  }
+  UI.entryCard = entryCard;
+  const VENUE_TITLES = { taxi: 'Taxi & bus park', jobs: 'Job post', food: 'Food spot', estate: 'Estate agent', biz: 'Business office', bank: 'Capital Trust Bank', atm: 'ATM', park: 'Area 1 motor park', shop: 'Shops', invest: 'Abuja Securities House', clinic: 'Garki General Hospital', work: 'Offices', worship: 'Place of worship', club: AL.NIGHT.club.name, lounge: AL.NIGHT.lounge.name, dealer: 'Apex Motors', lender: 'QuickCash Microfinance' };
   UI.parkMode = 'taxi';
   /* salaried jobs based at this place: apply, or start your shift */
   function careerSection(v, body) {
@@ -152,10 +174,10 @@
     here.forEach((c) => {
       if (cur && cur.id === c.id) {
         const ok = AL.Life.canWork(c);
-        body.appendChild(mk('Start your shift · ' + c.title, ok === true ? AL.Life.shiftText(c) + ' · −' + c.en + ' energy · level ' + AL.S.career.lvl : ok, fmt(AL.Life.careerPay(c, AL.S.career.lvl)), 'pay', () => { closeSheet(); AL.Life.workShift(); }, ok !== true));
+        body.appendChild(mk('Start your shift · ' + c.title, ok === true ? AL.Life.shiftText(c) + ' · −' + c.en + ' energy · level ' + AL.S.career.lvl : ok, fmt(AL.Life.monthly(c, AL.S.career.lvl)) + '/mo', 'pay', () => { closeSheet(); AL.Work.shift(); }, ok !== true));
       } else {
         const locked = AL.S.xp < c.req;
-        body.appendChild(mk('Apply: ' + c.title, (locked ? 'Needs ' + c.req + ' hustle points · ' : '') + AL.Life.shiftText(c) + ', ' + AL.Life.daysText(c) + (cur ? ' · replaces your current job' : ''), fmt(c.pay) + '/shift', 'pay', () => { AL.Life.apply(c); renderSheet(); }, locked));
+        body.appendChild(mk('Apply: ' + c.title, (locked ? 'Needs ' + c.req + ' hustle points · ' : '') + AL.Life.shiftText(c) + ', ' + AL.Life.daysText(c) + (cur ? ' · replaces your current job' : ''), fmt(AL.Life.monthly(c, 1)) + '/month', 'pay', () => { AL.Life.apply(c); renderSheet(); }, locked));
       }
     });
   }
@@ -198,7 +220,7 @@
     AL.City.venues.forEach((v, i) => {
       const p = AL.City.venueWorld(v);
       const vt = AL.VENUE_TYPES[v.type];
-      const R = { bank: 7, taxi: 4.5, shop: 6.5, invest: 6.5, clinic: 6.5, park: 4.5 };
+      const R = { bank: 7, taxi: 4.5, shop: 6.5, invest: 6.5, clinic: 6.5, park: 4.5, club: 5.5, lounge: 5.5, dealer: 6.5, lender: 5 };
       const base = { id: 'v' + i + '-' + v.type, pos: { x: p.x, z: p.z }, r: R[v.type] || 4 };
       if (v.type === 'bench') {
         AL.Interact.add({ ...base, r: 2.2, verb: 'Sit down', title: () => 'Bench', hidden: () => !!AL.Player.sitting,
@@ -208,7 +230,7 @@
       if (v.type === 'home') {
         AL.Interact.add({ ...base, verb: 'Enter home', title: () => { const r = AL.residence(); return r ? 'Your ' + r.name.toLowerCase() : 'Home'; },
           sub: () => { const r = AL.residence(); return r ? r.T.label + ' · ' + '★'.repeat(r.T.stars) : ''; },
-          hidden: () => { const r = AL.residence(); return !r || r.at !== v.district; }, use: () => AL.Home.open() });
+          hidden: () => { const r = AL.residence(); return !r || r.at !== v.district; }, use: () => { if (!AL.Interior.enter({ ...v, index: i })) AL.Home.open(); } });
         return;
       }
       AL.Interact.add({
@@ -217,7 +239,12 @@
         title: () => VENUE_TITLES[v.type],
         sub: () => (vt.hours ? AL.hoursText(vt.hours) : ''),
         enabled: () => (AL.isOpen(vt.hours) ? true : 'Closed now · ' + AL.hoursText(vt.hours)),
-        use: () => openSheet({ ...v, index: i }),
+        use: () => {
+          const venue = { ...v, index: i };
+          if (v.type === 'club' || v.type === 'lounge') return entryCard(venue);
+          if (AL.Interior.forVenue(venue)) { AL.Interior.enter(venue); return; }
+          openSheet(venue);
+        },
       });
     });
     AL.LANDMARKS.forEach((l) => {
@@ -318,12 +345,16 @@
     $('bizCancel').onclick = () => { $('bizOv').hidden = true; bizPending = null; };
     window.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
+      if (AL.Work.isOpen()) return;
+      if (!$('menuOv').hidden) { AL.Menu.close(); return; }
+      if (AL.Card.isOpen()) { AL.Card.hide(); return; }
       if (!$('bizOv').hidden) { $('bizOv').hidden = true; return; }
       if (!$('dialog').hidden) { closeTalk(); return; }
       if (!$('homeOv').hidden) { AL.Home.close(); return; }
       if (!$('phone').hidden) { AL.emit('toggle-phone'); return; }
       if (!$('sheet').hidden) { closeSheet(); return; }
-      if (AL.Player.cam.mapView) AL.emit('toggle-map');
+      if (AL.Player.cam.mapView) { AL.emit('toggle-map'); return; }
+      if (AL.S.started) AL.Menu.open();
     });
   };
   AL.UI = UI;

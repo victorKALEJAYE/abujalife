@@ -45,7 +45,9 @@
     P.cam.yaw = P.facing + Math.PI;
     P.sitting = null; P.char.setState('idle');
   };
-  P.district = () => AL.City.districtAt(P.pos.x, P.pos.z).key;
+  /* where you are on the city map (inside a building = its door) */
+  P.mapPos = () => { const IN = AL.Interior; if (IN && IN.active) { const v = IN.active.venue; return { x: v.mx * W, z: v.mz * W }; } return P.pos; };
+  P.district = () => { const m = P.mapPos(); return AL.City.districtAt(m.x, m.z).key; };
 
   /* ---------- input ---------- */
   function keyDown(e) {
@@ -53,7 +55,9 @@
     const k = e.key.toLowerCase();
     if (AL.UI && AL.UI.modalOpen() && k !== 'escape') return;
     P.keys[k] = true;
-    if (k === 'e' || k === 'enter') { AL.Interact.use(); }
+    if ((k === 'e' || k === 'enter') && !P.vehicle) { AL.Interact.use(); }
+    if (k === 'f' && !e.repeat && AL.Vehicles) AL.Vehicles.toggle();
+    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) P.autoWalk = null;
     if (k === 'm') AL.emit('toggle-map');
     if (k === 'p' || k === 'tab') { e.preventDefault(); AL.emit('toggle-phone'); }
     if (k === 'shift') P.running = true;
@@ -87,6 +91,7 @@
     const up = (e) => {
       if (!pts.has(e.pointerId)) return; pts.delete(e.pointerId);
       if (pts.size === 0 && moved < 8 && downAt && P.cam.mapView) mapTap(e.clientX, e.clientY);
+      else if (pts.size === 0 && moved < 8 && downAt && !P.cam.mapView) clickWorld(e.clientX, e.clientY);
       if (pts.size === 0) { downAt = null; AL.dragging = false; }
     };
     cv.addEventListener('pointerup', up);
@@ -102,7 +107,40 @@
     const hits = ray.intersectObjects(AL.City.pickables, true);
     for (const h of hits) { let o = h.object; while (o && !o.userData.key) o = o.parent; if (o) { AL.emit('map-pick', o.userData.key); return; } }
   }
+  /* click (or tap) in the world: use the thing you clicked, walk to it, or walk to that spot */
+  const plane = new T.Plane(new T.Vector3(0, 1, 0), 0), hit = new T.Vector3();
+  function clickWorld(cx, cy) {
+    if (AL.busy || P.trip || P.vehicle || (AL.UI && AL.UI.modalOpen())) return;
+    const cv = AL.$('scene'), r = cv.getBoundingClientRect();
+    ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, AL.camera);
+    plane.constant = -P.y;
+    if (!ray.ray.intersectPlane(plane, hit)) return;
+    // the nearest interactable to where you clicked (people and things stand above the floor, so allow some slack)
+    let best = null, bd = 2.6;
+    AL.Interact.items.forEach((it) => {
+      if (it.hidden && it.hidden()) return;
+      const p = it.getPos ? it.getPos() : it.pos; if (!p) return;
+      const d = Math.hypot(p.x - hit.x, p.z - hit.z);
+      if (d < bd) { bd = d; best = it; }
+    });
+    if (best) {
+      const p = best.getPos ? best.getPos() : best.pos;
+      if (Math.hypot(p.x - P.pos.x, p.z - P.pos.z) <= best.r) { AL.Interact.current = best; AL.emit('prompt', best); AL.Interact.use(); return; }
+      P.autoWalk = { x: p.x, z: p.z, item: best, t: 0, last: 1e9 };
+    } else {
+      if (Math.hypot(hit.x - P.pos.x, hit.z - P.pos.z) > 60) return;
+      P.autoWalk = { x: hit.x, z: hit.z, item: null, t: 0, last: 1e9 };
+    }
+    showMarker(P.autoWalk.x, P.autoWalk.z);
+  }
+  let marker = null;
+  function showMarker(x, z) {
+    if (!marker) { marker = new T.Mesh(new T.RingGeometry(0.35, 0.5, 24), new T.MeshBasicMaterial({ color: 0x2fbf71, transparent: true, opacity: 0.9, depthWrite: false })); marker.rotation.x = -Math.PI / 2; P.scene.add(marker); }
+    marker.position.set(x, AL.City.groundY(x, z) + 0.05, z); marker.visible = true; marker.userData.t = 1.2;
+  }
   P.setMapView = (on) => {
+    if (on && AL.Interior && AL.Interior.active) { AL.toast('Step outside to see the city. Your phone has Maps (P).'); return; }
     P.cam.mapView = on;
     P.cam.dist = on ? 520 : 8; P.cam.pitch = on ? 1.05 : 0.36;
     AL.emit('mapview', on);
@@ -119,6 +157,10 @@
     AL.busy = true; P.char.setState(anim); AL.emit('activity-start', P.activity);
   });
   AL.on('slept', ({ at, home }) => {
+    const IN = AL.Interior;
+    if (IN && IN.active && IN.active.sel.id === 'home' && home) { AL.emit('fade'); P.standUp(); return; }
+    if (IN && IN.active) IN.exit(true);
+    if (AL.Vehicles && AL.Vehicles.driving) AL.Vehicles.exit();
     const p = home ? AL.City.districtWorld(at, 0, -5.2) : AL.City.districtWorld('garki', -1.6, 4.6);
     P.place(p.x, p.z, home ? 0 : Math.PI);
     AL.emit('fade');
@@ -156,6 +198,21 @@
   const tmp = new T.Vector3();
   P.update = (dt) => {
     if (!P.char) return;
+    if (marker && marker.visible) { marker.userData.t -= dt; marker.material.opacity = Math.min(0.9, marker.userData.t); if (marker.userData.t <= 0 || !P.autoWalk) marker.visible = false; }
+    // driving your car
+    if (P.vehicle) {
+      AL.Vehicles.drive(dt, (AL.UI && AL.UI.modalOpen()) || AL.Card.isOpen() ? {} : P.keys);
+      if (!P.vehicle) return;
+      const c = P.vehicle.g.position;
+      P.pos.set(c.x, 0, c.z); P.y = c.y; P.facing = P.vehicle.g.rotation.y; P.speed = Math.abs(AL.Vehicles.speed);
+      P.root.position.set(c.x, c.y, c.z);
+      const dk = AL.City.districtAt(c.x, c.z), here = dk.inside ? dk.key : null;
+      if (here !== P.lastDistrict) { P.lastDistrict = here; if (here) AL.S.at = here; AL.emit('district', here); }
+      if (!P.cam.mapView && !AL.dragging && Math.abs(AL.Vehicles.speed) > 1.5) P.cam.yaw = AL.angleDamp(P.cam.yaw, P.facing + Math.PI, 2.2, dt);
+      P.saveT += dt; if (P.saveT > 4) { P.saveT = 0; AL.saveLocal(); }
+      tmp.set(c.x, c.y, c.z); updateCamera(dt, tmp, 0.3);
+      return;
+    }
     // taxi trip
     if (P.trip) {
       const t = P.trip; const before = t.s; t.s = Math.min(t.len, t.s + t.speed * dt);
@@ -181,8 +238,20 @@
       if (k.d || k.arrowright) ix += 1; if (k.a || k.arrowleft) ix -= 1;
       if (P.joy.active) { ix += P.joy.x; iz += P.joy.y; }
     }
-    const mag = Math.min(1, Math.hypot(ix, iz));
-    P.follow = mag > 0.05 && iz > 0.4 && Math.abs(ix) < 0.6;
+    let mag = Math.min(1, Math.hypot(ix, iz));
+    // click-to-walk: head for the clicked spot, then use the thing you clicked
+    let auto = null;
+    const aw = P.autoWalk;
+    if (aw && mag < 0.05 && !P.activity && !(AL.UI && AL.UI.modalOpen())) {
+      const dx = aw.x - P.pos.x, dz = aw.z - P.pos.z, d = Math.hypot(dx, dz);
+      const reach = aw.item ? Math.max(0.6, aw.item.r * 0.8) : 0.35;
+      aw.t += dt; if (aw.t > 0.8) { if (d > aw.last - 0.25) { P.autoWalk = null; } aw.last = d; aw.t = 0; }
+      if (d <= reach) {
+        P.autoWalk = null;
+        if (aw.item && !(aw.item.hidden && aw.item.hidden())) { AL.Interact.current = aw.item; AL.emit('prompt', aw.item); AL.Interact.use(); }
+      } else if (P.autoWalk) { auto = { x: dx / d, z: dz / d }; mag = 1; if (P.sitting) P.standUp(); }
+    }
+    P.follow = mag > 0.05 && iz > 0.4 && Math.abs(ix) < 0.6 && !auto;
     const S = AL.S;
     const wantRun = (P.running || P.runToggle || (P.joy.active && Math.hypot(P.joy.x, P.joy.y) > 0.92)) && S.energy > 5;
     if (mag > 0.05 && P.sitting) P.standUp();
@@ -190,7 +259,9 @@
     if (mag > 0.05 && !P.sitting) {
       const y = P.cam.yaw;
       const fx = -Math.sin(y), fz = -Math.cos(y), rx = Math.cos(y), rz = -Math.sin(y);
-      let mx = fx * iz + rx * ix, mz = fz * iz + rz * ix; const ml = Math.hypot(mx, mz) || 1; mx /= ml; mz /= ml;
+      let mx = fx * iz + rx * ix, mz = fz * iz + rz * ix;
+      if (auto) { mx = auto.x; mz = auto.z; }
+      const ml = Math.hypot(mx, mz) || 1; mx /= ml; mz /= ml;
       target = (wantRun ? RUN : WALK) * mag;
       P.facing = AL.angleDamp(P.facing, Math.atan2(mx, mz), 12, dt);
       P.vel.x = AL.damp(P.vel.x, mx * target, 10, dt); P.vel.y = AL.damp(P.vel.y, mz * target, 10, dt);
@@ -200,7 +271,8 @@
     }
     if (!P.sitting) {
       let nx = P.pos.x + P.vel.x * dt, nz = P.pos.z + P.vel.y * dt;
-      const lim = 160 * W; nx = AL.clamp(nx, -lim, lim); nz = AL.clamp(nz, -lim, lim);
+      const lim = 160 * W;
+      if (!(AL.Interior && AL.Interior.active)) { nx = AL.clamp(nx, -lim, lim); nz = AL.clamp(nz, -lim, lim); }
       const r = AL.City.resolve(nx, nz, RADIUS);
       P.pos.x = r.x; P.pos.z = r.z;
     }
@@ -219,7 +291,7 @@
     AL.Interact.update(P.pos.x, P.pos.z, P.facing);
     // remember where we are
     P.saveT += dt;
-    if (P.saveT > 4) { P.saveT = 0; S.pos = { x: Math.round(P.pos.x * 10) / 10, z: Math.round(P.pos.z * 10) / 10 }; AL.saveLocal(); }
+    if (P.saveT > 4) { P.saveT = 0; if (!(AL.Interior && AL.Interior.active)) S.pos = { x: Math.round(P.pos.x * 10) / 10, z: Math.round(P.pos.z * 10) / 10 }; AL.saveLocal(); }
     tmp.set(P.pos.x, P.y, P.pos.z);
     updateCamera(dt, tmp, 0);
   };
@@ -231,7 +303,8 @@
     c.target.z = AL.damp(c.target.z, focus.z, c.mapView ? 4 : 10, dt);
     // auto-orbit gently behind the player while walking (not while dragging)
     if (!c.mapView && P.follow && P.speed > 1 && !AL.dragging) c.yaw = AL.angleDamp(c.yaw, P.facing + Math.PI, 1.2, dt);
-    const d = P.trip ? 26 : c.dist;
+    const inside = AL.Interior && AL.Interior.active;
+    const d = P.trip ? 26 : P.vehicle ? Math.max(9, c.dist) : inside ? Math.min(c.dist, 6.5) : c.dist;
     const pitch = P.trip ? 0.5 : c.pitch;
     cam.position.set(
       c.target.x + Math.sin(c.yaw) * Math.cos(pitch) * d,
@@ -246,6 +319,13 @@
         const f = t / len;
         if (AL.City.pointBlocked(tx + dx * f, ty + dy * f, tz + dz * f)) { const k = Math.max(0.8, t - 0.5) / len; cam.position.set(tx + dx * k, ty + dy * k, tz + dz * k); break; }
       }
+    }
+    // inside a building the camera stays within the room, under the ceiling line
+    if (inside && inside.w) {
+      const m = 0.3;
+      cam.position.x = AL.clamp(cam.position.x, inside.ox - inside.w / 2 + m, inside.ox + inside.w / 2 - m);
+      cam.position.z = AL.clamp(cam.position.z, inside.oz - inside.d / 2 + m, inside.oz + inside.d / 2 - m);
+      cam.position.y = Math.min(cam.position.y, inside.h - 0.3);
     }
     const floor = AL.City.groundY(cam.position.x, cam.position.z) + 0.6;
     if (cam.position.y < floor) cam.position.y = floor;

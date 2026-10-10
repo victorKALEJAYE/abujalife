@@ -22,6 +22,40 @@ Abuja is kept as data and only the area around the player is drawn.
 - **Traffic.** Each district has a congestion level and an average speed. A small pool of cars is spawned only on roads near the player.
 - **Level of detail.** Full districts are built near the player; far away they become cheap stand-ins.
 
+## Controls (laptop first)
+
+| Key | Action |
+| --- | --- |
+| W A S D | walk, or drive your car |
+| Shift | run |
+| Mouse drag / wheel | look around / zoom |
+| Click | walk to something and use it, or walk to that spot |
+| E | interact |
+| F | get in or out of your car |
+| Space | handbrake |
+| M | city map view |
+| P | phone |
+| 1–6 | pick an option on an action card |
+| Esc | back / pause menu |
+
+On-screen sticks only appear on touch-only devices.
+
+## Walk-in places: less world, more interaction
+
+Doors lead into real rooms with staff and customers (`js/interiors/`). Rooms are built on demand away from the city, reuse the normal controller, collisions and prompts, and are cached.
+
+- **Supermarkets** (Kubwa Value Mart, Grand Square in Gwarinpa): walk the aisles, pick products off shelves and fridges into a basket, then pay with cash or card at a checkout. Food goes to your fridge at home.
+- **Fashion stores** (Urban Thread at Jabi Lake Mall, Wuse Fabric Hall): try outfits on, then buy them. Sunglasses, watches, chains, bags, caps and shoes show on your character.
+- **Capital Trust Bank** (CBD): teller windows, ATMs, a loan desk and a staff entrance for the bank teller career.
+- **QuickCash Microfinance** (Garki, Nyanya): loans approved on weekly income, credit score and existing loans, repaid every Monday.
+- **Club Ember** (Wuse) and **Skyline Rooftop Lounge** (Maitama): regular or VIP entry, a bar, a dance floor, a DJ and a VIP section.
+- **Apex Motors** (Jabi): six cars on display. Test drive, buy, sell, or have one delivered to your home parking space. Owned cars can be driven anywhere.
+- **Your home**: bed, sofa and TV, kitchen, bathroom, wardrobe and storage, built from your home's template, furniture and paint.
+
+Every shift is a short work minigame. Your performance % changes your pay, and careers show a monthly salary. Luxury districts (Maitama, Asokoro, Jabi, CBD, Wuse) have palm-lined driveways, fountains and gold-trimmed plazas.
+
+To add a place, call `AL.Interior.define(id, { build(ctx) { … } })` in `js/interiors/` and map a venue type to it in `Interior.forVenue`.
+
 ## Gameplay systems
 
 - **Travel.** Walk, bus, taxi or ride-hailing. Each trip has a distance, an ETA from simulated traffic, a cost and an arrival time. You can watch the ride or skip it with a travel transition, and the clock always advances.
@@ -59,7 +93,13 @@ js/systems/interaction.js reusable interaction prompts
 js/systems/economy.js     day jobs, food, property, business, bank, sleep
 js/systems/life.js        rent, careers, bank transfers + loans, shopping, inventory, investments, messages, daily ticks
 js/systems/travel.js      travel quotes, journeys, navigation
-js/ui/*.js                HUD, venue panels + dialogue, phone + apps, maps, journey card, creator, home interior
+js/data-places.js         accessories, supermarket stock, cars, nightlife, lenders, work minigames, area classes
+js/systems/credit.js      instalment loans and approval
+js/systems/vehicles.js    owned cars: buy, test drive, drive, park, sell
+js/interiors/engine.js    walk-in interior engine (rooms, staff, spots, enter/exit)
+js/interiors/places.js    supermarket, fashion, bank, lender, club/lounge, dealership
+js/interiors/home.js      your walk-in home
+js/ui/*.js                HUD, venue panels + dialogue, phone + apps, maps, journey card, creator, home manager, action card, work minigame, pause menu
 js/online.js              optional cloud save + shared leaderboard
 js/main.js                boot + main loop
 ```

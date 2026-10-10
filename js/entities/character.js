@@ -50,6 +50,8 @@
     const bw = L.body === 'slim' ? 0.88 : L.body === 'broad' ? 1.2 : 1;
     const sw = fem ? 0.9 : 1, hw = fem ? 1.14 : 1, hs = fem ? 0.96 : 1;
     const P = palette(L), sk = L.skin;
+    const acc = {}; (L.acc || []).forEach((id) => { const d = AL.ACC && AL.ACC[id]; if (d) acc[d.slot] = d; });
+    if (acc.feet) P.shoes = acc.feet.color;
     const root = new T.Group();
     const body = joint(root, 0, 0, 0); body.scale.setScalar(hs);
     const R = {};
@@ -98,6 +100,7 @@
       R[side + 'Leg'] = lg; R[side + 'Kn'] = kn;
     });
     buildOutfit(R, L, P, bw, sw, hw);
+    buildAccessories(R, L, acc, bw, sw);
     return { root, R, L, height: 1.79 * hs };
   }
 
@@ -160,6 +163,24 @@
       default: break;
     }
   }
+  /* accessories bought in the fashion stores, visible on the body */
+  function buildAccessories(R, L, acc, bw, sw) {
+    if (acc.eyes) {
+      const lens = acc.eyes.color === '#141414' ? '#141414' : '#cfe3ef';
+      [-1, 1].forEach((s) => { part(R.head, G.BOX, acc.eyes.color, 0.05, 0.034, 0.012, s * 0.038, 0.13, 0.112); part(R.head, G.BOX, lens, 0.042, 0.026, 0.006, s * 0.038, 0.13, 0.119); part(R.head, G.BOX, acc.eyes.color, 0.006, 0.008, 0.1, s * 0.098, 0.135, 0.06); });
+      part(R.head, G.BOX, acc.eyes.color, 0.03, 0.008, 0.01, 0, 0.138, 0.114);
+    }
+    if (acc.wrist) { part(R.lEl, G.BOX, acc.wrist.color, 0.1, 0.038, 0.1, 0, -0.225, 0); part(R.lEl, G.BOX, '#9fd3f0', 0.04, 0.042, 0.05, 0, -0.225, 0.03); }
+    if (acc.neck) { const c = part(R.spine, G.TORUS, acc.neck.color, 0.085 * bw, 0.06, 0.012, 0, 0.47, 0.035); c.rotation.x = Math.PI / 2 - 0.55; c.scale.set(0.085 * bw, 0.075 * bw, 0.04); part(R.spine, G.SPH, acc.neck.color, 0.018, 0.022, 0.012, 0, 0.385, 0.1 * bw); }
+    if (acc.bag) {
+      const st = part(R.spine, G.BOX, '#3b2a1c', 0.025, 0.62, 0.012, 0, 0.22, 0.108 * bw); st.rotation.z = 0.62;
+      part(R.spine, G.BOX, acc.bag.color, 0.07, 0.2, 0.24, 0.2 * bw * sw + 0.05, -0.02, 0.0);
+    }
+    if (acc.head && !['gele', 'fila', 'cap'].includes(L.hair)) {
+      part(R.head, G.HEMI, acc.head.color, 0.11, 0.09, 0.122, 0, 0.15, 0);
+      part(R.head, G.BOX, acc.head.color, 0.12, 0.012, 0.09, 0, 0.152, 0.14);
+    }
+  }
   function shade(hex) {
     const c = new T.Color(hex); c.multiplyScalar(0.78); return '#' + c.getHexString();
   }
@@ -206,6 +227,13 @@
     } else if (st === 'work') {
       tg.rShX = -1.7 + Math.sin(t * 8) * 0.6; tg.rElX = -0.7; tg.lShX = -0.9; tg.lElX = -0.8; tg.spineX = 0.25; tg.headX = 0.2;
       tg.hipsY = 0.9; tg.lKnX = tg.rKnX = 0.3; tg.lLegX = tg.rLegX = -0.2;
+    } else if (st === 'dance') {
+      const b = Math.sin(t * 6.2);
+      tg.hipsY = 0.9 + Math.abs(b) * 0.04; tg.lKnX = tg.rKnX = 0.25 + Math.abs(b) * 0.2; tg.lLegX = tg.rLegX = -0.12;
+      tg.lShX = -1.0 + b * 0.7; tg.rShX = -1.0 - b * 0.7; tg.lShZ = -0.55; tg.rShZ = 0.55; tg.lElX = tg.rElX = -1.1;
+      tg.spineZ = Math.sin(t * 3.1) * 0.12; tg.headX = b * 0.08; tg.headY = Math.sin(t * 3.1) * 0.2;
+    } else if (st === 'cheer') {
+      tg.lShZ = -2.6; tg.rShZ = 2.6; tg.lShX = tg.rShX = Math.sin(t * 8) * 0.2; tg.hipsY = 0.94 + Math.abs(Math.sin(t * 8)) * 0.03;
     } else if (st === 'wave') {
       tg.rShZ = 2.5; tg.rElX = -0.2; tg.rShX = Math.sin(t * 9) * 0.25;
     } else { // idle

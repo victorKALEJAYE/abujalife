@@ -32,7 +32,7 @@
     scene.add(sun); scene.add(sun.target);
     new ResizeObserver(resize).observe($('game')); resize();
 
-    AL.HUD.bind(); AL.UI.bind(); AL.Phone.bind(); AL.Creator.bind(); AL.Home.bind();
+    AL.HUD.bind(); AL.UI.bind(); AL.Phone.bind(); AL.Creator.bind(); AL.Home.bind(); AL.Work.bind(); AL.Menu.bind();
     $('loadingNote').textContent = 'Building Abuja…';
     AL.City.build(scene, onCityReady);
     requestAnimationFrame(loop);
@@ -58,7 +58,9 @@
     $('hud').hidden = false;
     AL.Life.ensureHome();
     AL.Sim.initMarket(); AL.Sim.catchUp();
+    if (AL.Interior.active) AL.Interior.exit(true);
     AL.Player.rebuild();
+    AL.Vehicles.spawnAll();
     const sp = AL.Player.spawnPoint();
     AL.Player.place(sp.x, sp.z, Math.PI);
     AL.NPC.syncOthers();
@@ -86,6 +88,12 @@
   /* ---- day / night ---- */
   function updateSky() {
     const h = AL.hour();
+    if (AL.Interior && AL.Interior.active) {
+      sky.cur.set('#15181d'); scene.background = sky.cur; scene.fog.color.copy(sky.cur); scene.fog.near = 400; scene.fog.far = 2000;
+      hemi.intensity = 0.55; sun.intensity = 0.35;
+      const p = AL.Player.pos; sun.position.set(p.x + 30, 80, p.z + 40); sun.target.position.set(p.x, 0, p.z);
+      return;
+    }
     const up = Math.max(0, Math.sin(((h - 6) / 12) * Math.PI));
     if (up > 0.25) sky.cur.copy(sky.dusk).lerp(sky.day, Math.min(1, (up - 0.25) / 0.35));
     else sky.cur.copy(sky.night).lerp(sky.dusk, up / 0.25);
@@ -106,13 +114,19 @@
   let last = performance.now(), hudT = 0, lodT = 0;
   function loop(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
-    if (AL.City.ready && AL.Player.char) {
+    if (AL.City.ready && AL.Player.char && AL.paused) {
+      // pause menu: keep drawing, freeze the world
+    } else if (AL.City.ready && AL.Player.char) {
+      const inside = AL.Interior.active;
       if (AL.started) AL.Time.update(dt);
       AL.Player.update(dt);
-      AL.NPC.update(dt, AL.Player.pos);
-      AL.City.updateTraffic(dt, AL.Player.pos);
-      AL.NPC.animateOthers(dt);
-      AL.HUD.tick(now / 1000); AL.UI.tick(); AL.UI.tickTalk();
+      if (inside) AL.Interior.update(dt);
+      else {
+        AL.NPC.update(dt, AL.Player.pos);
+        AL.City.updateTraffic(dt, AL.Player.pos);
+        AL.NPC.animateOthers(dt);
+      }
+      AL.HUD.tick(now / 1000); AL.UI.tick(); AL.UI.tickTalk(); AL.Card.tick();
       lodT += dt; if (lodT > 0.5) { lodT = 0; AL.City.updateLOD(AL.Player.pos, AL.Player.cam.mapView); }
       hudT += dt; if (hudT > 0.25 && AL.started) { hudT = 0; AL.HUD.render(); }
       updateSky();
