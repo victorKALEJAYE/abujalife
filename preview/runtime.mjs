@@ -10,6 +10,8 @@ import { variedAppearance } from '../src/shared/avatars.mjs';
 import { validateFurniturePlacement, applyFurniturePlacement, storeSupportedFurniture, readFurniturePlacement } from '../src/shared/furniture-placement.mjs';
 import { validateHomeDesign } from '../src/shared/home-design.mjs';
 import { homeDesignPreservesRoutes } from '../app/world-interiors.js';
+import { HUSTLE_ACTIONS, HustleError, applyHustleAction, recordHustleProgress } from '../src/shared/daily-hustle.mjs';
+import { PROGRESSION_ACTIONS, ProgressionError, applyProgressionAction, recordProgression, shiftPay } from '../src/shared/progression.mjs';
 
 const STORAGE_KEY = 'abujalife.browser-preview.v1';
 const PLAYER_ID = 'browser-preview';
@@ -173,7 +175,7 @@ function economyOperation(kind,payload,normalized,mutate) {
     return{ok:true,profile:clone(state.profile),...clone(existing.result),replayed:true};
   }
   const next=clone(state),profile=next.profile,timestamp=Date.now(),before=profile.wallet;
-  const extra=mutate(profile,timestamp,next);
+  const extra=mutate(profile,timestamp,next);recordLife(profile,kind,payload,extra,timestamp);
   check(Number.isSafeInteger(profile.wallet)&&profile.wallet>=0,'This action cannot be represented as exact whole Naira',409,'numeric_limit');
   profile.lastActionAt=timestamp;
   if(profile.wallet!==before)next.transactions.push({id:uid(),amount:profile.wallet-before,reason:extra.ledgerReason||kind,createdAt:timestamp});
@@ -183,6 +185,20 @@ function economyOperation(kind,payload,normalized,mutate) {
   Object.defineProperty(next.economyOperations,key,{value:{kind,fingerprint,result:clone(publicExtra),amount:kind==='demo-topup'?normalized.amount:0,createdAt:timestamp},enumerable:true,writable:true,configurable:true});
   state=next;persist();queueMicrotask(()=>emit('profile',{profile:clone(state.profile)}));
   return{ok:true,profile:clone(profile),...publicExtra,replayed:false};
+}
+// Today's Hustle and life progression use the same shared rules as the server.
+function recordLife(profile,kind,payload,extra,now){
+  recordHustleProgress(profile,{kind,payload,extra,now});
+  const milestones=recordProgression(profile,{kind,payload,extra,now});
+  if(milestones&&extra&&typeof extra==='object'&&(milestones.levelUps.length||milestones.storiesDone.length))extra.milestones=milestones;
+}
+function lifeAction(name,payload={}){
+  const request=typeof payload.idempotencyKey==='string'?payload:{...payload,idempotencyKey:uid()};
+  const normalized=Object.fromEntries(Object.entries(payload).filter(([key])=>key!=='idempotencyKey').sort(([a],[b])=>a.localeCompare(b)));
+  return economyOperation(name,request,normalized,(profile,now)=>{
+    try{return HUSTLE_ACTIONS.has(name)?applyHustleAction(profile,name,payload,{now}):applyProgressionAction(profile,name,payload,{now});}
+    catch(error){if(error instanceof HustleError||error instanceof ProgressionError)throw new PreviewError(error.message,error.status,error.code);throw error;}
+  });
 }
 function topup(payload) {
   check(!Object.hasOwn(payload,'verified'),'Real-money payments require a verified payment provider; use a free game top-up',403,'payments_unavailable');
@@ -297,6 +313,7 @@ function action(name,payload={}) {
       return{item:clone(item),ledgerReason:`Furniture purchase · ${item.name}`};
     });
   }
+  if(HUSTLE_ACTIONS.has(name)||PROGRESSION_ACTIONS.has(name))return lifeAction(name,payload);
   if(name==='sell-item')return sellItem(payload);
   if(name==='topup'||name==='demo-topup')return topup(payload);
   if(name==='transfer-naira')throw new PreviewError('Naira transfers connect registered residents in the full game. This browser preview has no shared wallet or other residents.',503,'browser_preview_only');
@@ -397,7 +414,7 @@ function action(name,payload={}) {
       check(timestamp-challenge.startedAt>=1500,'Read the tasks before submitting your shift',409,'shift_too_fast');
       check(Array.isArray(payload.answers)&&payload.answers.length===job.tasks.length,'Answer each shift task');check(payload.answers.every(answer=>answer&&typeof answer==='object'&&typeof answer.taskId==='string'&&typeof answer.optionId==='string'),'Choose valid shift answers');const answers=new Map(payload.answers.map(answer=>[answer.taskId,answer.optionId]));
       check(answers.size===job.tasks.length&&job.tasks.every(task=>task.options.some(option=>option.id===answers.get(task.id))),'Choose one valid answer for every task');
-      const correct=job.tasks.filter(task=>answers.get(task.id)===task.answer).length,pay=Math.round(job.pay*(.4+.6*correct/job.tasks.length));
+      const correct=job.tasks.filter(task=>answers.get(task.id)===task.answer).length,pay=shiftPay(profile,job,correct,timestamp);
       profile.wallet+=pay;profile.energy=clamp(profile.energy-job.energy);profile.hunger=clamp(profile.hunger-10);profile.stress=clamp(profile.stress+8);profile.reputation+=correct===job.tasks.length?2:1;profile.completedShifts++;profile.skills[job.skill]=(profile.skills[job.skill]||0)+correct;profile.careerLevel=1+Math.floor(profile.completedShifts/5);profile.activeShift=null;profile.nextShiftAt=timestamp+20000;
       const record=profile.workDays[challenge.dateKey]||{completed:0,slots:[]};profile.workDays[challenge.dateKey]={completed:record.completed+1,slots:[...new Set([...record.slots,challenge.slotId])]};profile.workDays=Object.fromEntries(Object.entries(profile.workDays).sort(([a],[b])=>b.localeCompare(a)).slice(0,8));
       extra.result={challengeId:challenge.id,pay,correct,total:job.tasks.length,careerLevel:profile.careerLevel,dateKey:challenge.dateKey,slotId:challenge.slotId};next.completedChallenges[challenge.id]=extra.result;next.challenge=null;extra.workSchedule=jobSchedule(profile.job,profile,timestamp);
@@ -410,6 +427,7 @@ function action(name,payload={}) {
     case 'pay-bills': {check(timestamp-profile.billsPaidAt>=GAME_BILL_PERIOD_MS,'Your home bills are up to date');const property=propertyFor(profile);check(property,'Your home listing is unavailable');const amount=Math.round(property.bills*(100-comfort.billDiscountPercent)/100);debit(amount);profile.billsPaidAt=timestamp;extra.bill={amount,baseAmount:property.bills,discountPercent:comfort.billDiscountPercent};break;}
     default:throw new PreviewError('Unknown preview action');
   }
+  recordLife(profile,name,payload,extra,timestamp);
   check(Number.isSafeInteger(profile.wallet)&&profile.wallet>=0,'This action cannot be represented as exact whole Naira',409,'numeric_limit');profile.lastActionAt=timestamp;if(profile.wallet!==before)next.transactions.push({id:uid(),amount:profile.wallet-before,reason:name,createdAt:timestamp});next.transactions=next.transactions.slice(-100);
   state=next;persist();queueMicrotask(()=>emit('profile',{profile:clone(state.profile)}));return{ok:true,profile:clone(profile),...extra};
 }
@@ -538,3 +556,6 @@ addEventListener('storage',event=>{if(event.key===STORAGE_KEY){state=restore();e
 document.documentElement.dataset.preview='browser';
 persist();
 await import('../app/app.js');
+// Today's Hustle and My progress run on the same shared rules in the preview.
+// (Adapter tests replace the app import above with __adapterReady and skip these.)
+if(!globalThis.__adapterReady)void import('../app/daily-hustle.js').then(()=>import('../app/progression.js'));

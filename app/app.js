@@ -267,6 +267,8 @@ async function action(name,payload={}, {throwOnError=false}={}){
    else if(!['world','outside'].includes(view))renderMain();
    else renderMain();
    armTripArrival();
+   // Read-only notice for presentation modules (My progress); it never re-renders the world.
+   dispatchEvent(new CustomEvent('abujalife:action-result',{detail:{action:name,profile:result.profile}}));
   }
   void refresh({render:false}).catch(()=>{});
   return result;

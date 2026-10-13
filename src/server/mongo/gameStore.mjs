@@ -5,6 +5,7 @@ import { TENANCY_RULES, recordHousingLifeEvent, syncHomeTenancy, nextTenancyChec
 import { HOUSING_ACTIONS, HOUSING_MONEY_ACTIONS, applyHousingAction } from '../housingActions.mjs';
 import { GIG_ACTIONS, GIG_MONEY_ACTIONS, applyServerGigAction } from '../streetGigs.mjs';
 import { HUSTLE_ACTIONS, HUSTLE_MONEY_ACTIONS, applyServerHustleAction, recordHustleProgress } from '../dailyHustle.mjs';
+import { PROGRESSION_ACTIONS, PROGRESSION_MONEY_ACTIONS, applyServerProgressionAction, recordServerProgression, shiftPay } from '../progression.mjs';
 import { ABUJA_ATLAS } from '../../shared/atlas.mjs';
 import * as life from '../../shared/life.mjs';
 import { vehicleColorFor } from '../../shared/vehicles.mjs';
@@ -36,7 +37,7 @@ function appearance(current,incoming,inventory=[]){
 }
 const pick=(source,keys)=>Object.fromEntries(keys.filter(key=>source[key]!==undefined).map(key=>[key,source[key]]));
 const needsKeys=['energy','hunger','hygiene','social','fun','stress','mood','lastActionAt'];
-const progressionKeys=['reputation','careerLevel','skills','completedShifts','nextShiftAt','job','activeShift','gig','gigDays','gigStats','gigCooldownUntil','hustle','rep'];
+const progressionKeys=['reputation','careerLevel','skills','completedShifts','nextShiftAt','job','activeShift','gig','gigDays','gigStats','gigCooldownUntil','hustle','rep','lifeProgress'];
 const stateKeys=['district','location','activeTrip','drivingVehicle'];
 const residentKeys=['displayName','settings','lifeGoal','onboardingComplete'];
 
@@ -134,6 +135,11 @@ export class MongoGameStore {
     const normalized=Object.fromEntries(Object.entries(payload).filter(([key])=>key!=='idempotencyKey').sort(([a],[b])=>a.localeCompare(b)));
     return this.economyOperation(id,action,payload,normalized,(p,now)=>applyServerHustleAction(p,action,payload,{now}),{requireKey:HUSTLE_MONEY_ACTIONS.has(action)});
   }
+  // Life progression: accepting a promotion and collecting a finished Abuja Story.
+  async progressionAction(id,action,payload={}){
+    const normalized=Object.fromEntries(Object.entries(payload).filter(([key])=>key!=='idempotencyKey').sort(([a],[b])=>a.localeCompare(b)));
+    return this.economyOperation(id,action,payload,normalized,(p,now)=>applyServerProgressionAction(p,action,payload,{now}),{requireKey:PROGRESSION_MONEY_ACTIONS.has(action)});
+  }
   async gigAction(id,action,payload={}){
     const normalized=Object.fromEntries(Object.entries(payload).filter(([key])=>key!=='idempotencyKey').sort(([a],[b])=>a.localeCompare(b)));
     return this.economyOperation(id,action,payload,normalized,(p,now)=>applyServerGigAction(p,action,payload,{now,randomInt:this.gigRandomInt}),{requireKey:GIG_MONEY_ACTIONS.has(action)});
@@ -177,7 +183,7 @@ export class MongoGameStore {
     check(key===undefined||typeof key==='string'&&/^[A-Za-z0-9_-]{8,100}$/.test(key),'Use a valid request key',400,'idempotency_required');const operationKey=key||uid(),fingerprint=JSON.stringify(normalized);let replayed=false;
     const result=await this.transaction(async session=>{
       const existing=await this.collection('economy_operations').findOne({residentId:id,operationKey},{session});if(existing){check(existing.kind===kind&&existing.fingerprint===fingerprint,'This request key was already used for a different action',409,'idempotency_conflict');replayed=true;return{ok:true,profile:await this.profile(id,{session}),...existing.result};}
-      const p=await this.profile(id,{session}),before=p.wallet,timestamp=this.clock();const extra=await mutate(p,timestamp,session,operationKey);recordHousingLifeEvent(p,{kind,extra,now:timestamp,beforeBalance:before});recordHustleProgress(p,{kind,payload,extra,now:timestamp});check(integer(p.wallet),'This action cannot be represented as exact whole Naira',409,'numeric_limit');p.lastActionAt=timestamp;await this.save(p,{session,persistEconomy:true});
+      const p=await this.profile(id,{session}),before=p.wallet,timestamp=this.clock();const extra=await mutate(p,timestamp,session,operationKey);recordHousingLifeEvent(p,{kind,extra,now:timestamp,beforeBalance:before});recordHustleProgress(p,{kind,payload,extra,now:timestamp});recordServerProgression(p,{kind,payload,extra,now:timestamp});check(integer(p.wallet),'This action cannot be represented as exact whole Naira',409,'numeric_limit');p.lastActionAt=timestamp;await this.save(p,{session,persistEconomy:true});
       const {ledgerReason,ledgerTransferId,ledgerType,...publicExtra}=extra||{};if(p.wallet!==before)await this.appendLedger(id,p.wallet-before,ledgerReason||kind,timestamp,operationKey,stateMetadata.get(p).walletVersion,session,ledgerType||economyTransactionType(kind,normalized,catalog),ledgerTransferId?{transferId:ledgerTransferId}:{});
       await this.collection('economy_operations').insertOne({_id:`${id}:${operationKey}`,residentId:id,operationKey,kind,fingerprint,result:publicExtra,createdAt:timestamp},{session});return{ok:true,profile:p,...publicExtra};
     });if(!replayed)await this.emitUser(id,'profile',{profile:result.profile});return{...result,replayed};
@@ -332,6 +338,7 @@ export class MongoGameStore {
     if(HOUSING_ACTIONS.has(action))return this.housingAction(id,action,payload);
     if(GIG_ACTIONS.has(action))return this.gigAction(id,action,payload);
     if(HUSTLE_ACTIONS.has(action))return this.hustleAction(id,action,payload);
+    if(PROGRESSION_ACTIONS.has(action))return this.progressionAction(id,action,payload);
     if(['paint-vehicle'].includes(action)||(action==='purchase'&&catalog.some(item=>item.id===payload.itemId&&item.category==='vehicle')))return this.vehicleAction(id,action,payload);
     const moneyActions=new Set(['eat','hangout','exercise','cinema','venue-action','travel','return-home','purchase','sell-item','move-home','pay-bills','renew-rent']);
     const normalized=Object.fromEntries(Object.entries(payload).filter(([key])=>key!=='idempotencyKey').sort(([a],[b])=>a.localeCompare(b)));
@@ -397,7 +404,7 @@ export class MongoGameStore {
           const schedule=await this.workSchedule({...p,job:row.jobId},timestamp,{session});check(schedule.remainingToday>0,'You have finished today’s two shifts. Come back tomorrow.',409,'daily_shift_limit');check(!row.shiftSlot||!schedule.slots.find(slot=>slot.id===row.shiftSlot)?.completed,'This shift slot has already been completed',409,'shift_slot_completed');
           check(timestamp-row.startedAt>=1500,'Read the tasks before submitting your shift',409,'shift_too_fast');check(Array.isArray(payload.answers)&&payload.answers.length===job.tasks.length,'Answer each shift task');
           check(payload.answers.every(answer=>answer&&typeof answer==='object'&&typeof answer.taskId==='string'&&typeof answer.optionId==='string'),'Choose valid shift answers');const answers=new Map(payload.answers.map(a=>[a.taskId,a.optionId]));check(answers.size===job.tasks.length&&job.tasks.every(t=>answers.has(t.id)&&t.options.some(o=>o.id===answers.get(t.id))),'Choose one valid answer for every task');
-          const correct=job.tasks.filter(t=>answers.get(t.id)===t.answer).length,pay=Math.round(job.pay*(.4+.6*correct/job.tasks.length));p.wallet+=pay;p.energy=clamp(p.energy-job.energy);p.hunger=clamp(p.hunger-10);p.stress=clamp(p.stress+8);p.reputation+=correct===job.tasks.length?2:1;p.completedShifts++;p.skills[job.skill]=(p.skills[job.skill]||0)+correct;p.careerLevel=1+Math.floor(p.completedShifts/5);p.activeShift=null;p.nextShiftAt=timestamp+20000;
+          const correct=job.tasks.filter(t=>answers.get(t.id)===t.answer).length,pay=shiftPay(p,job,correct,timestamp);p.wallet+=pay;p.energy=clamp(p.energy-job.energy);p.hunger=clamp(p.hunger-10);p.stress=clamp(p.stress+8);p.reputation+=correct===job.tasks.length?2:1;p.completedShifts++;p.skills[job.skill]=(p.skills[job.skill]||0)+correct;p.careerLevel=1+Math.floor(p.completedShifts/5);p.activeShift=null;p.nextShiftAt=timestamp+20000;
           extra.result={challengeId:row.id,pay,correct,total:job.tasks.length,careerLevel:p.careerLevel,dateKey:row.workDate,slotId:row.shiftSlot};await this.collection('challenges').updateOne({_id:row.id,completedAt:null},{$set:{completedAt:timestamp,result:extra.result}},{session});
           extra.workSchedule=await this.workSchedule(p,timestamp,{session});p.workDays=Object.fromEntries(Object.entries(p.workDays).sort(([a],[b])=>b.localeCompare(a)).slice(0,8));break;
         }
