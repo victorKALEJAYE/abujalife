@@ -1,0 +1,74 @@
+import {installActivityDiscovery} from './activityDiscovery.mjs';
+import { pathToFileURL } from 'node:url';
+import '../shared/abuja-landmarks-2026.mjs';
+import { connectMongo } from './mongo/database.mjs';
+import { MongoGameStore } from './mongo/gameStore.mjs';
+import { MongoSocialStore } from './mongo/socialStore.mjs';
+import { MongoDirectoryStore } from './mongo/directoryStore.mjs';
+import { MongoPresenceStore } from './mongo/presenceStore.mjs';
+import { MongoAdminStore } from './mongo/adminStore.mjs';
+import { MongoPaymentStore } from './mongo/paymentStore.mjs';
+import { MongoAdStore } from './mongo/adStore.mjs';
+import { MongoAuthStore } from './mongo/authStore.mjs';
+import { MongoRewardStore } from './mongo/rewardStore.mjs';
+import { installMongoReadOptimizer } from './mongo/readOptimizer.mjs';
+import { createEmailDelivery } from './emailDelivery.mjs';
+import { createProductionServer, productionLog } from './production-http.mjs';
+import { attachLiveActions } from './liveActions.mjs';
+import { installFastLocationActions } from './fastLocationActions.mjs';
+import { installPropertyFurnitureIsolation } from './propertyFurnitureIsolation.mjs';
+import { attachXIntegration } from './xIntegration.mjs';
+import { attachJackpotRuntime } from './jackpotRuntime.mjs';
+import { attachCivicRuntime } from './civicRuntime.mjs';
+import { installOkrikaHouseAds,attachOkrikaHouseAdRuntime } from './okrikaHouseAds.mjs';
+
+function publicOrigin(value,name){let url;try{url=new URL(value);}catch{throw new Error(`${name} requires a public HTTPS origin`);}if(url.protocol!=='https:'||url.username||url.password||url.pathname!=='/'||url.search||url.hash||/^(localhost|127\.|0\.|\[?::1\]?$)/i.test(url.hostname))throw new Error(`${name} requires a public HTTPS origin`);return url.origin;}
+export function productionConfig(env=process.env){
+  if(env.NODE_ENV!=='production')throw new Error('NODE_ENV must be production for this entrypoint');
+  if(!env.MONGODB_URI)throw new Error('MONGODB_URI is required; production has no SQLite fallback');
+  if(env.MONGODB_DATABASE!=='abujalife_prod')throw new Error('MONGODB_DATABASE must be abujalife_prod');
+  const publicWebUrl=publicOrigin(env.PUBLIC_WEB_URL,'PUBLIC_WEB_URL'),apiPublicUrl=publicOrigin(env.API_PUBLIC_URL,'API_PUBLIC_URL');
+  const corsOrigins=(env.CORS_ORIGINS||'').split(',').map(v=>v.trim()).filter(Boolean).map(v=>publicOrigin(v,'CORS_ORIGINS'));
+  if(!corsOrigins.includes(publicWebUrl))throw new Error('CORS_ORIGINS must include PUBLIC_WEB_URL');
+  const port=Number(env.PORT||3000);if(!Number.isInteger(port)||port<1024||port>65535)throw new Error('PORT must be an unprivileged valid port');
+  const host=env.HOST||'127.0.0.1';if(!['127.0.0.1','::1','0.0.0.0'].includes(host))throw new Error('HOST must be a loopback address or the explicit private container listener');
+  return{uri:env.MONGODB_URI,database:env.MONGODB_DATABASE,port,host,publicWebUrl,apiPublicUrl,corsOrigins,trustProxy:env.TRUST_PROXY==='1',configKey:env.ABUJALIFE_CONFIG_KEY,adminUsername:env.ABUJALIFE_ADMIN_USERNAME||''};
+}
+export async function createProductionApplication({env=process.env,clock=Date.now,originRandomInt,fetchImpl=fetch,log=productionLog,database:providedDatabase}={}){
+  const config=productionConfig(env),database=providedDatabase||await connectMongo({uri:config.uri,database:config.database,production:true});
+  try{
+    const delivery=createEmailDelivery({env,publicWebUrl:config.publicWebUrl,fetchImpl,log});
+    const auth=new MongoAuthStore({client:database.client,db:database.db,clock,...delivery});
+    const store=new MongoGameStore({client:database.client,db:database.db,clock,originRandomInt,production:true,auth});
+    await store.initHousing();
+    installFastLocationActions(store);
+    installPropertyFurnitureIsolation(store);
+    const social=new MongoSocialStore(store);await social.init({ensureIndexes:false});social.attachToGame();
+    const directory=new MongoDirectoryStore(store,social);
+    installMongoReadOptimizer({store,social});
+    const presence=new MongoPresenceStore(store,social);await presence.init({ensureIndexes:false});
+    const admin=new MongoAdminStore({store,bootstrapUsername:config.adminUsername});await admin.init({ensureIndexes:false});
+    social.authorizeModeration=id=>admin.requirePermission(id,'moderation');
+    const payments=new MongoPaymentStore({store,admin,fetchImpl,configKey:config.configKey,publicOrigin:config.publicWebUrl,log});await payments.init({ensureIndexes:false});
+    const rewards=new MongoRewardStore({store,admin,publicWebUrl:config.publicWebUrl});
+    const ads=new MongoAdStore({store,admin,payments,log});await ads.init({ensureIndexes:false});await installOkrikaHouseAds(ads,{database,log});ads.attach();
+    const server=createProductionServer({...config,store,social,directory,presence,admin,payments,rewards,ads,database,log,env,fetchImpl});
+    const sessionRuntime=server.sessionRuntime;
+    const liveActions=attachLiveActions(server,{store,admin,corsOrigins:config.corsOrigins,publicWebUrl:config.publicWebUrl,trustProxy:config.trustProxy,log});
+    const x=attachXIntegration(server,{store,admin,database,env,publicWebUrl:config.publicWebUrl,apiPublicUrl:config.apiPublicUrl,corsOrigins:config.corsOrigins,fetchImpl});
+    const jackpot=await attachJackpotRuntime(server,{store,admin,payments,database,env,publicWebUrl:config.publicWebUrl,apiPublicUrl:config.apiPublicUrl,corsOrigins:config.corsOrigins,fetchImpl,log});
+    const civic=await attachCivicRuntime(server,{store,admin,database,publicWebUrl:config.publicWebUrl,apiPublicUrl:config.apiPublicUrl,corsOrigins:config.corsOrigins,log});
+    const houseAds=attachOkrikaHouseAdRuntime(server,{ads,store,admin,database,publicWebUrl:config.publicWebUrl,corsOrigins:config.corsOrigins,log});
+    installActivityDiscovery(store,{log});
+    payments.startReconciliation();
+    store.startHousingReconciliation({log});
+    return{server,store,social,directory,presence,admin,payments,rewards,ads,sessionRuntime,liveActions,x,jackpot,civic,houseAds,database,config,close:async()=>{await Promise.all([payments.stopReconciliation(),store.stopHousingReconciliation()]);jackpot.close();houseAds.close?.();server.closeRealtime();if(server.listening)await new Promise(resolve=>server.close(resolve));await database.close();}};
+  }catch(error){await database.close();throw error;}
+}
+export async function startProduction(){
+  let app;try{app=await createProductionApplication();await new Promise((resolve,reject)=>{app.server.once('error',reject);app.server.listen(app.config.port,app.config.host,resolve);});productionLog('startup',{port:app.config.port,storage:'mongodb',database:'abujalife_prod',emailConfigured:app.store.auth.configuration().emailVerificationEnabled,xConfigured:app.x.configured,jackpotConfigured:true,civicConfigured:true,sessionRuntime:true,liveActions:true,fastLocationActions:true,houseAds:true});}catch(error){productionLog('startup_failure',{code:error.code||'configuration_or_database_error'});if(app)await app.close();process.exitCode=1;return;}
+  let stopping=false;for(const signal of ['SIGTERM','SIGINT'])process.on(signal,async()=>{if(stopping)return;stopping=true;productionLog('shutdown',{signal});const timeout=setTimeout(()=>{productionLog('shutdown_timeout');process.exit(1);},10000);timeout.unref();try{await app.close();clearTimeout(timeout);process.exitCode=0;}catch{productionLog('shutdown_failure');process.exitCode=1;}});
+  process.on('uncaughtException',()=>{productionLog('crash',{code:'uncaught_exception'});process.exit(1);});
+  process.on('unhandledRejection',()=>{productionLog('crash',{code:'unhandled_rejection'});process.exit(1);});
+}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)await startProduction();

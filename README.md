@@ -1,113 +1,53 @@
-# Abuja Life
+# AbujaLife
 
-A 3D open-world Nigerian life simulator set in Abuja, built with Three.js (r128). Runs in the browser with no build step.
+AbujaLife is a multiplayer Abuja life simulator. Residents create a character, move through Abuja-inspired neighbourhoods and landmarks, work, own or rent homes, drive, socialize, chat, furnish spaces, and take part in fictional city activities.
 
-## Run it
+## Current product
 
-Serve the folder with any static server and open `index.html`:
+The current production client includes:
 
-```bash
-npx serve .
-# or
-python -m http.server 8080
-```
+- A persistent MongoDB-backed resident account and economy.
+- Multiplayer presence, same-zone resident avatars, public-street resident name tags, location chat and privacy controls.
+- A full Abuja World plus a separate Map experience.
+- Authored Abuja landmarks, venue-specific interiors and fictional civic story destinations.
+- A property market with a broad Abuja housing ladder across more than 20 purchasable/rentable homes and reusable authored layouts.
+- Property-aware resident furniture placement, storage and resale.
+- Abuja Car ownership, persistent vehicle state and route-based travel.
+- The in-game AbujaLife Phone with Messages, wallet/Naira tools, City Story, calls, voice notes and other resident apps inside the handset overlay.
+- Social posts, comments, likes, 24-hour statuses, groups, events, visits and direct messages.
+- Administrator moderation, finance controls, audited corrections and persistent settings.
+- Flutterwave-backed configured payment flows where a feature explicitly uses external money.
+- Fictional AbujaLife civic/election gameplay.
+- Community Jackpot, when enabled, as a separate funded subsystem with its own balance, room entry and admin-reviewed bank-withdrawal flow.
 
-## Design principle: simulate the city, don't render the city
+## Naira and Community Jackpot
 
-Abuja is kept as data and only the area around the player is drawn.
+Ordinary AbujaLife wallet Naira is **game currency**. It powers the resident economy, purchases, rent, transport, transfers, jobs and other simulator systems and is not presented as a cash-redemption wallet.
 
-- **Locations.** About 90 meaningful places, each with a category, opening hours and services, in `js/sim/sim.js`.
-- **Businesses.** Staff, customers and revenue are simulated every game hour. Nobody inside them is rendered.
-- **Residents.** 240 people with homes, jobs and daily schedules. A pool of about 20 reusable 3D actors is handed to whoever is near the player right now.
-- **Traffic.** Each district has a congestion level and an average speed. A small pool of cars is spawned only on roads near the player.
-- **Level of detail.** Full districts are built near the player; far away they become cheap stand-ins.
+Community Jackpot is intentionally separate from the ordinary game wallet. When configured, a resident funds the Jackpot balance through the supported payment provider, enters a Jackpot room, and winnings remain in the Jackpot balance until the resident requests a bank payout. Withdrawal requests are reviewed/paid through the finance-admin flow and the product applies the configured withdrawal fee. A Jackpot withdrawal does not make the ordinary AbujaLife game wallet cash-withdrawable.
 
-## Controls (laptop first)
+## Homes
 
-| Key | Action |
-| --- | --- |
-| W A S D | walk, or drive your car |
-| Shift | run |
-| Mouse drag / wheel | look around / zoom |
-| Click | walk to something and use it, or walk to that spot |
-| E | interact |
-| F | get in or out of your car |
-| Space | handbrake |
-| M | city map view |
-| P | phone |
-| 1–6 | pick an option on an action card |
-| Esc | back / pause menu |
+AbujaLife no longer has only six housing choices. The property catalogue contains a larger Abuja-specific progression across entry, mid-market, upper and luxury homes in multiple real Abuja areas already represented by the game atlas.
 
-On-screen sticks only appear on touch-only devices.
+The renderer deliberately reuses a maintained set of authored structural layouts rather than creating a separate brittle engine for every listing. Listings still differ by location, type, bedrooms, bathrooms, area, tier, pricing, comfort, features and furnishing treatment. Resident-owned furniture placements are property-aware so furniture left in one home does not silently duplicate into another.
 
-## Walk-in places: less world, more interaction
+## Chat media and voice notes
 
-Doors lead into real rooms with staff and customers (`js/interiors/`). Rooms are built on demand away from the city, reuse the normal controller, collisions and prompts, and are cached.
+Chat photos and voice notes are private authenticated media. Production does not write chat media into a versioned release directory. Windows production receives a persistent `CHAT_MEDIA_DIR` under AbujaLife shared runtime storage, while deployments using configured private S3/R2-compatible storage use that instead. Failed storage is treated as a failed send rather than a successful phantom message.
 
-- **Supermarkets** (Kubwa Value Mart, Grand Square in Gwarinpa): walk the aisles, pick products off shelves and fridges into a basket, then pay with cash or card at a checkout. Food goes to your fridge at home.
-- **Fashion stores** (Urban Thread at Jabi Lake Mall, Wuse Fabric Hall): try outfits on, then buy them. Sunglasses, watches, chains, bags, caps and shoes show on your character.
-- **Capital Trust Bank** (CBD): teller windows, ATMs, a loan desk and a staff entrance for the bank teller career.
-- **QuickCash Microfinance** (Garki, Nyanya): loans approved on weekly income, credit score and existing loans, repaid every Monday.
-- **Club Ember** (Wuse) and **Skyline Rooftop Lounge** (Maitama): regular or VIP entry, a bar, a dance floor, a DJ and a VIP section.
-- **Apex Motors** (Jabi): six cars on display. Test drive, buy, sell, or have one delivered to your home parking space. Owned cars can be driven anywhere.
-- **Your home**: bed, sofa and TV, kitchen, bathroom, wardrobe and storage, built from your home's template, furniture and paint.
+## Production architecture
 
-Every shift is a short work minigame. Your performance % changes your pay, and careers show a monthly salary. Luxury districts (Maitama, Asokoro, Jabi, CBD, Wuse) have palm-lined driveways, fountains and gold-trimmed plazas.
+Production uses MongoDB as the authoritative persistent store and serves the web client separately from the API. Windows releases are versioned under the AbujaLife release tree while mutable runtime data such as persistent chat media is kept under shared runtime storage.
 
-To add a place, call `AL.Interior.define(id, { build(ctx) { … } })` in `js/interiors/` and map a venue type to it in `Interior.forVenue`.
+The deployment updater promotes an exact checked GitHub revision only after the required release checks are green. Backups are encrypted and the repository includes restore/restart verification against disposable production infrastructure.
 
-## Gameplay systems
+### Realtime scaling
 
-- **Travel.** Walk, bus, taxi or ride-hailing. Each trip has a distance, an ETA from simulated traffic, a cost and an arrival time. You can watch the ride or skip it with a travel transition, and the clock always advances.
-- **Phone.**
-  - Maps: pan, zoom, search, categories, directions, ride requests.
-  - Rides, Bank (balance, history, transfers, loans, bills) and Invest (fictional exchange with dividends).
-  - ShopNaija (next-day delivery), Jobs (careers and day jobs), Messages, Home (housing) and Me (profile).
-  - Rich List, Contacts, Activity, Goals and Settings.
-- **Housing.**
-  - You start in a rented Kubwa self-con with the first week paid. Rent is taken weekly from your bank account, and three days behind means eviction.
-  - Rent or buy at estate agents.
-  - Five reusable interior templates (Apartment A, B and C; House A and B).
-  - Your home is your base: sleep, wardrobe, kitchen, furniture and paint.
-- **Careers.** 8 salaried jobs with schedules. Go to the workplace during your shift; pay goes into your bank account, and every 10 shifts earns a promotion. The day jobs from Phase 1 are still there for cash.
-- **Player profile.** Age, cash, bank balance, credit score, health, energy, happiness, home, job, inventory, wardrobe, possessions, investments and relationships.
-- **From Phase 1.** Third-person 3D character, landmarks, NPC dialogue, day/night clock, businesses and property.
+The current realtime server keeps each process bounded and fails closed when that process reaches its configured live-connection capacity. Persistent presence leases are Mongo-backed, but realtime fanout is still process-local today. Horizontal multi-process fanout is therefore a remaining scale architecture step before AbujaLife can claim very large simultaneous realtime concurrency; removing the safety limit without a broker would not constitute a real scale fix.
 
-## Project structure
+## Verification
 
-```
-index.html            page shell and HUD markup
-css/game.css          game UI styles
-js/core.js            shared helpers + event bus (AL namespace)
-js/data.js            core content: districts, jobs, food, homes, businesses, looks, venues, landmarks, NPC names
-js/data-life.js       life-sim content: interior templates, rentals, careers, shop catalogue, stocks, place names
-js/sim/sim.js         city simulation: locations, businesses, traffic, population, stock market
-js/state.js           player state, save/load, derived values (net worth, prices, clock)
-js/world/kit.js       low-poly building kit (shared geometries/materials)
-js/world/city.js      city builder, venues, landmarks, traffic, collisions, ground height
-js/entities/character.js  modular 3D human + procedural animator
-js/entities/player.js     player controller, camera, taxi trips
-js/entities/npc.js        pedestrians with routines, other online players
-js/systems/time.js        real-time clock, day/night events
-js/systems/interaction.js reusable interaction prompts
-js/systems/economy.js     day jobs, food, property, business, bank, sleep
-js/systems/life.js        rent, careers, bank transfers + loans, shopping, inventory, investments, messages, daily ticks
-js/systems/travel.js      travel quotes, journeys, navigation
-js/data-places.js         accessories, supermarket stock, cars, nightlife, lenders, work minigames, area classes
-js/systems/credit.js      instalment loans and approval
-js/systems/vehicles.js    owned cars: buy, test drive, drive, park, sell
-js/interiors/engine.js    walk-in interior engine (rooms, staff, spots, enter/exit)
-js/interiors/places.js    supermarket, fashion, bank, lender, club/lounge, dealership
-js/interiors/home.js      your walk-in home
-js/ui/*.js                HUD, venue panels + dialogue, phone + apps, maps, journey card, creator, home manager, action card, work minigame, pause menu
-js/online.js              optional cloud save + shared leaderboard
-js/main.js                boot + main loop
-```
+The repository release workflow runs unit/integration QA, Windows runtime checks, production build/infrastructure checks, a Mobile WebKit city-entry gate, the historical resident browser journey and the current V4 full-client browser acceptance. Browser evidence is retained as workflow artifacts for inspection.
 
-To add a new job, food, home, business or venue type, add it to `js/data.js`. The systems read the tables, so most additions need no other code changes.
-
-## Roadmap
-
-- **Phase 2:** full banking, inventory, shops and supermarkets, drivable cars, more careers.
-- **Phase 3:** loans and microfinance, property rental, investments and a stock exchange, clubs, religious and cultural events, NPC relationships.
-- **Phase 4:** multiplayer, a deeper economy, more of the city.
+Public-hosting, DNS/certificate state and third-party provider availability are environment checks and should be verified separately from disposable local production acceptance.
