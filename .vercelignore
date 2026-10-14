@@ -1,0 +1,6 @@
+# Vercel serves only the prebuilt single-player preview.
+# Everything else (server, MongoDB, deploy scripts) is excluded so Vercel
+# never treats this repository as a Node server.
+/*
+!/preview
+!/vercel.json

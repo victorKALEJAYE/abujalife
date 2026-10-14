@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "echo \"No install needed: serving the self-contained preview\"",
+  "buildCommand": "echo \"No build needed: preview/index.html is prebuilt\"",
+  "outputDirectory": "preview"
+}
